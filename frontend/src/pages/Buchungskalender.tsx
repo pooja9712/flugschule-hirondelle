@@ -102,25 +102,34 @@ export const Buchungskalender = () => {
 
   const selectedEventForDetails = eventId ? events.find(e => e.id === eventId) : null;
 
-  // "Zusätzliche Termine": other upcoming occurrences of the same recurring course
+  // "Zusätzliche Termine": old's real logic (MatukioHelperRecurring::
+  // getRecurringDatesMinimal(), called with its defaults from the live
+  // bootstrap3 event template - verified against the restored production
+  // DB's own component config, which confirms bootstrap3 is genuinely the
+  // active template here) is "every other date of this same series whose
+  // begin is after NOW, limit 10" - NOT relative to whichever occurrence
+  // you're currently viewing, and not capped at 2. Viewing a past or
+  // far-future date of a series should show the exact same list of real
+  // upcoming dates either way.
+  const now = new Date();
   const additionalDates = selectedEventForDetails?.seriesId
     ? events
         .filter(e =>
           e.seriesId === selectedEventForDetails.seriesId &&
           e.id !== selectedEventForDetails.id &&
-          e.start > selectedEventForDetails.start
+          e.start > now
         )
         .sort((a, b) => a.start.getTime() - b.start.getTime())
-        .slice(0, 2)
+        .slice(0, 10)
     : selectedEventForDetails?.eventNumber
     ? events
         .filter(e =>
           e.eventNumber === selectedEventForDetails.eventNumber &&
           e.id !== selectedEventForDetails.id &&
-          e.start > selectedEventForDetails.start
+          e.start > now
         )
         .sort((a, b) => a.start.getTime() - b.start.getTime())
-        .slice(0, 2)
+        .slice(0, 10)
     : [];
 
   // Initialize tooltips
