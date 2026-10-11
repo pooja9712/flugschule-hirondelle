@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../utils/prisma';
 import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware';
+import { DEFAULT_BOOKING_CONFIRMATION_TEMPLATE } from '../services/mailer.service';
 
 const router = Router();
 
@@ -26,11 +27,10 @@ router.get('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
       // are genuinely English in old's own live data even on the German
       // site - not paraphrased into German.
       const defaultEmails = {
-        bookingConfirmation: {
-          subject: 'Buchungsbestätigung: {EVENT_TITLE}',
-          bodyHtml: '<h3>Hallo {BOOKING_NAME},</h3><p>vielen Dank für Ihre Buchung.</p><br/>{EVENT_DETAILS}<br/>{BOOKING_DETAILS}<br/><p>Im Anhang finden Sie Ihre Rechnung und Ihr Ticket.</p><hr/><p>Die Kursgebühr wird 4 Wochen vor Kursbeginn fällig. Bei Kurzfristbuchungen (ab vier Wochen vor Kursbeginn) wird der gesamte Kurspreis sofort fällig.</p><p>Wir führen eine echte Warteliste (der Kurs ist dann tatsächlich ausgebucht). Buchungen auf Warteliste sind daher erst zu bezahlen, wenn die Teilnahme auch sicher - und der Platz verbindlich bestätigt ist.</p><p><strong>Bankverbindung</strong><br/>Kontoinhaber: Alexander Schlink<br/>Sparkasse Südpfalz<br/>IBAN: DE32 5485 0010 1700 1976 41<br/>BIC: SOLADES1SUW</p><hr/><p style="color: #ff0000;">Wir empfehlen zur Absicherung für Stornos / Absagen den Abschluss einer Seminarversicherung bzw. für unsere mehrtätigen Kurse / Reisen zusätzlich eine Reiseversicherung. Infos dazu findet ihr auf unserer Seite <a href="https://www.fs-hirondelle.de/infos/versicherungen" style="color: #ff0000;">https://www.fs-hirondelle.de/infos/versicherungen</a>.</p><hr/><p>Mit freundlichen Grüßen,<br/>Ihr Team der Flugschule Hirondelle</p>',
-          bodyText: 'Hallo {BOOKING_NAME},\n\nvielen Dank für Ihre Buchung.\n\n{EVENT_DETAILS}\n\n{BOOKING_DETAILS}\n\nIm Anhang finden Sie Ihre Rechnung und Ihr Ticket.\n\nDie Kursgebühr wird 4 Wochen vor Kursbeginn fällig. Bei Kurzfristbuchungen (ab vier Wochen vor Kursbeginn) wird der gesamte Kurspreis sofort fällig.\n\nWir führen eine echte Warteliste (der Kurs ist dann tatsächlich ausgebucht). Buchungen auf Warteliste sind daher erst zu bezahlen, wenn die Teilnahme auch sicher - und der Platz verbindlich bestätigt ist.\n\nBankverbindung\nKontoinhaber: Alexander Schlink\nSparkasse Südpfalz\nIBAN: DE32 5485 0010 1700 1976 41\nBIC: SOLADES1SUW\n\nWir empfehlen zur Absicherung für Stornos / Absagen den Abschluss einer Seminarversicherung bzw. für unsere mehrtätigen Kurse / Reisen zusätzlich eine Reiseversicherung. Infos dazu findet ihr auf unserer Seite https://www.fs-hirondelle.de/infos/versicherungen.\n\nMit freundlichen Grüßen,\nIhr Team der Flugschule Hirondelle'
-        },
+        // Single source of truth shared with mailer.service.ts's own
+        // fallback, so the seeded admin-editable copy and the "template
+        // missing" fallback can never drift apart again.
+        bookingConfirmation: { ...DEFAULT_BOOKING_CONFIRMATION_TEMPLATE },
         adminCancellation: {
           subject: 'Stornierung Ihrer Buchung: {EVENT_TITLE}',
           bodyHtml: '<p>Sehr geehrte/geehrter {BOOKING_NAME},</p><p>Folgende Buchung wurde storniert:</p><p>{EVENT_DETAILS}</p><p>Mit freundlichen Grüßen,<br/>Ihr Team der Flugschule Hirondelle</p>',

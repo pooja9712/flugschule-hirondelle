@@ -7,6 +7,60 @@ import { getSettingsConfig } from '../routes/settingsConfig.routes';
 import { buildBookingPlaceholders, renderMatTokens, matukioBookingNumber } from '../utils/matukioTemplates';
 import { getOrCreateInvoiceNumber, formatInvoiceNumber } from '../utils/invoiceNumber';
 
+// Matches old Matukio's real, live mail_booking template content
+// (hiron_matukio_templates id=1) as closely as this app's data model allows -
+// verified word-for-word against the restored production DB. Old's own
+// subject is "##COM_MATUKIO_EVENT## MAT_EVENT_SEMNUM: MAT_EVENT_TITLE"
+// ("Veranstaltung" is a real translated string; MAT_EVENT_SEMNUM is the
+// event's own number). Old's real body text never mentions an attached
+// invoice or ticket at all (the invoice is its own separate email - see
+// sendInvoiceEmail below), lists booking details BEFORE event details, and
+// uses "Sehr geehrte/geehrter" as its greeting (old's real
+// COM_MATUKIO_EMAIL_GREETING language key is itself missing/untranslated
+// even in old's own real installed language files - this uses the same
+// greeting the rest of this app's own templates already settled on, rather
+// than reproducing that literal untranslated placeholder to real customers).
+// Old's own template also has a "view your booking online" link
+// (MAT_BOOKING_DETAILPAGE) - omitted here since it points at a page a GUEST
+// booking (no login) could open via a UUID, and this app's only equivalent
+// (Profil "Meine Buchungen") requires a login old's version didn't.
+export const DEFAULT_BOOKING_CONFIRMATION_TEMPLATE = {
+  subject: 'Veranstaltung {EVENT_NUMBER}: {EVENT_TITLE}',
+  bodyHtml: `<p>Sehr geehrte/geehrter {BOOKING_NAME},<br/><br/>vielen Dank für Ihre Buchung.<br/><br/>Ihre Buchungsdetails:<br/>{BOOKING_DETAILS}<br/><br/>Veranstaltungsdetails:<br/>{EVENT_DETAILS}</p>
+<hr/>
+<p>Die Kursgebühr wird 4 Wochen vor Kursbeginn fällig. Bei Kurzfristbuchungen (ab vier Wochen vor Kursbeginn) wird der gesamte Kurspreis sofort fällig.</p>
+<p>Wir führen eine echte Warteliste (der Kurs ist dann tatsächlich ausgebucht). Buchungen auf Warteliste sind daher erst zu bezahlen, wenn die Teilnahme auch sicher - und der Platz verbindlich bestätigt ist.</p>
+<p><strong>Bankverbindung</strong><br/>Kontoinhaber: Alexander Schlink<br/>Sparkasse Südpfalz<br/>IBAN: DE32 5485 0010 1700 1976 41<br/>BIC: SOLADES1SUW</p>
+<hr/>
+<p style="color: #ff0000;">Wir empfehlen zur Absicherung für Stornos / Absagen den Abschluss einer Seminarversicherung bzw. für unsere mehrtätigen Kurse / Reisen zusätzlich eine Reiseversicherung. Infos dazu findet ihr auf unserer Seite <a href="https://www.fs-hirondelle.de/infos/versicherungen" style="color: #ff0000;">https://www.fs-hirondelle.de/infos/versicherungen</a>.</p>
+<hr/>
+<p>Mit freundlichen Grüßen,<br/>Ihr Team der Flugschule Hirondelle</p>`,
+  bodyText: `Sehr geehrte/geehrter {BOOKING_NAME},
+
+vielen Dank für Ihre Buchung.
+
+Ihre Buchungsdetails:
+{BOOKING_DETAILS}
+
+Veranstaltungsdetails:
+{EVENT_DETAILS}
+
+Die Kursgebühr wird 4 Wochen vor Kursbeginn fällig. Bei Kurzfristbuchungen (ab vier Wochen vor Kursbeginn) wird der gesamte Kurspreis sofort fällig.
+
+Wir führen eine echte Warteliste (der Kurs ist dann tatsächlich ausgebucht). Buchungen auf Warteliste sind daher erst zu bezahlen, wenn die Teilnahme auch sicher - und der Platz verbindlich bestätigt ist.
+
+Bankverbindung
+Kontoinhaber: Alexander Schlink
+Sparkasse Südpfalz
+IBAN: DE32 5485 0010 1700 1976 41
+BIC: SOLADES1SUW
+
+Wir empfehlen zur Absicherung für Stornos / Absagen den Abschluss einer Seminarversicherung bzw. für unsere mehrtätigen Kurse / Reisen zusätzlich eine Reiseversicherung. Infos dazu findet ihr auf unserer Seite https://www.fs-hirondelle.de/infos/versicherungen.
+
+Mit freundlichen Grüßen,
+Ihr Team der Flugschule Hirondelle`,
+};
+
 export async function sendBookingConfirmationEmail(bookingId: string) {
   try {
     const booking = await prisma.booking.findUnique({
@@ -82,37 +136,7 @@ async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailT
 
     if (!template) {
       console.warn('Booking confirmation template missing in DB. Using fallback template.');
-      // Matches old Matukio's real, live mail_booking template content
-      // (hiron_matukio_templates id=1) word-for-word - verified directly
-      // against the restored production DB. Old's real text never mentions
-      // an attached invoice or ticket at all (the invoice is its own
-      // separate email - see sendInvoiceEmail below - and old's own template
-      // simply doesn't call the ticket out either), so this doesn't either;
-      // a prior version of this fallback invented an "Im Anhang finden Sie
-      // Ihre Rechnung und Ihr Ticket" line that isn't in old's real content.
-      template = {
-        subject: 'Buchungsbestätigung: {EVENT_TITLE}',
-        bodyHtml: `
-          <h3>Hallo {BOOKING_NAME},</h3>
-          <p>vielen Dank für Ihre Buchung.</p>
-          <br/>
-          {EVENT_DETAILS}
-          <br/>
-          {BOOKING_DETAILS}
-          <hr/>
-          <p>Die Kursgebühr wird 4 Wochen vor Kursbeginn fällig. Bei Kurzfristbuchungen (ab vier Wochen vor Kursbeginn) wird der gesamte Kurspreis sofort fällig.</p>
-          <p>Wir führen eine echte Warteliste (der Kurs ist dann tatsächlich ausgebucht). Buchungen auf Warteliste sind daher erst zu bezahlen, wenn die Teilnahme auch sicher - und der Platz verbindlich bestätigt ist.</p>
-          <p><strong>Bankverbindung</strong><br/>
-          Kontoinhaber: Alexander Schlink<br/>
-          Sparkasse Südpfalz<br/>
-          IBAN: DE32 5485 0010 1700 1976 41<br/>
-          BIC: SOLADES1SUW</p>
-          <hr/>
-          <p style="color: #ff0000;">Wir empfehlen zur Absicherung für Stornos / Absagen den Abschluss einer Seminarversicherung bzw. für unsere mehrtätigen Kurse / Reisen zusätzlich eine Reiseversicherung. Infos dazu findet ihr auf unserer Seite <a href="https://www.fs-hirondelle.de/infos/versicherungen" style="color: #ff0000;">https://www.fs-hirondelle.de/infos/versicherungen</a>.</p>
-          <hr/>
-          <p>Mit freundlichen Grüßen,<br/>Ihr Team der Flugschule Hirondelle</p>
-        `
-      };
+      template = DEFAULT_BOOKING_CONFIRMATION_TEMPLATE;
     }
 
     // Prepare placeholders
@@ -129,10 +153,15 @@ async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailT
       if (loc) locationName = loc.title;
     }
 
+    // Matches old's real getEmailEventInfoHTML() table structure exactly
+    // (bold title row, then Beginn/Ende/Ort rows) - templates.php:1357-1420.
     const eventDetails = `
-      <strong>Veranstaltung:</strong> ${booking.event.title}<br/>
-      <strong>Datum:</strong> ${new Date(booking.event.startDate).toLocaleDateString('de-DE')}${booking.event.endDate ? ` bis ${new Date(booking.event.endDate).toLocaleDateString('de-DE')}` : ''}<br/>
-      <strong>Ort:</strong> ${locationName}
+      <table cellpadding="2" border="0" width="100%">
+        <tr><td colspan="2"><strong>${booking.event.title}</strong></td></tr>
+        <tr><td style="width:180px">Beginn: </td><td>${new Date(booking.event.startDate).toLocaleString('de-DE')}</td></tr>
+        ${booking.event.endDate ? `<tr><td>Ende: </td><td>${new Date(booking.event.endDate).toLocaleString('de-DE')}</td></tr>` : ''}
+        <tr><td>Ort: </td><td>${locationName}</td></tr>
+      </table>
     `;
 
     let ticketRows = '';
@@ -155,11 +184,16 @@ async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailT
       ${discountRow}<strong>Gesamtpreis:</strong> ${booking.totalPrice} €
     `;
 
-    // Replace placeholders in subject and body
-    let subject = template.subject.replace(/{EVENT_TITLE}/g, booking.event.title);
+    // Replace placeholders in subject and body - {EVENT_NUMBER} matches old's
+    // real MAT_EVENT_SEMNUM token in the subject (empty string if the event
+    // has none set, exactly like old's plain str_replace would leave it).
+    let subject = template.subject
+      .replace(/{EVENT_TITLE}/g, booking.event.title)
+      .replace(/{EVENT_NUMBER}/g, booking.event.eventNumber || '');
     let bodyHtml = template.bodyHtml
       .replace(/{BOOKING_NAME}/g, customerName)
       .replace(/{EVENT_TITLE}/g, booking.event.title)
+      .replace(/{EVENT_NUMBER}/g, booking.event.eventNumber || '')
       .replace(/{EVENT_DETAILS}/g, eventDetails)
       .replace(/{BOOKING_DETAILS}/g, bookingDetails);
 
