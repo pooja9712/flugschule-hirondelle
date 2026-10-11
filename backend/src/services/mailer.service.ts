@@ -4,6 +4,8 @@ import { generateInvoicePDF, generateTicketPDF } from './pdf.service';
 import { getNewsletterTransporter } from '../utils/newsletterTransporter';
 import { resolveBookingCustomer } from '../utils/bookingCustomer';
 import { getSettingsConfig } from '../routes/settingsConfig.routes';
+import { buildBookingPlaceholders, renderMatTokens, matukioBookingNumber } from '../utils/matukioTemplates';
+import { getOrCreateInvoiceNumber, formatInvoiceNumber } from '../utils/invoiceNumber';
 
 export async function sendBookingConfirmationEmail(bookingId: string) {
   try {
@@ -23,12 +25,15 @@ export async function sendBookingConfirmationEmail(bookingId: string) {
 
     // old: sendmail_teilnehmer - matches this session's Settings audit finding
     // that the new app had no way to turn the customer's own confirmation
-    // email off, unlike old's real admin capability.
+    // email off, unlike old's real admin capability. Old gates both the
+    // booking-confirmation email AND the separate invoice email on this same
+    // setting (events.php:472/573), so both calls live inside this branch.
     const settings = await getSettingsConfig();
     if (!settings.sendmailTeilnehmer) {
       console.log('Booking confirmation email skipped: sendmailTeilnehmer is disabled in Settings.');
     } else {
       await sendCustomerConfirmationEmail(booking, settings);
+      await sendInvoiceEmail(booking, settings).catch(console.error);
     }
 
     // old: sendmail_owner - a copy of every new booking sent to the school
@@ -42,25 +47,49 @@ export async function sendBookingConfirmationEmail(bookingId: string) {
   }
 }
 
-async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailInvoice: boolean; sendmailTicket: boolean; emailBcc?: string | null }) {
+// Old's real status-dependent opening line (events.php:439-450,
+// COM_MATUKIO_YOU_ARE_BOOKED_ON_THE_WAITING_LIST /
+// _YOUR_BOOKING_IS_ACTIVE_AND_RESERVED / _YOUR_BOOKING_IS_PENDING_AND_NOT_RESERVED)
+// - server-injected ahead of the admin's own editable template text, not
+// itself part of that editable template, exactly like old's own
+// $start .= JText::_(...) before $template->value.
+function statusIntroLine(status: string): string {
+  if (status === 'WAITLIST') {
+    return 'Da die maximale Teilnehmerzahl bereits erreicht war, wurden Sie auf die Warteliste gesetzt.';
+  }
+  if (status === 'CONFIRMED') {
+    return 'Ihre Buchung ist aktiv und Ihre Plätze sind reserviert!';
+  }
+  if (status === 'PENDING') {
+    return 'Ihre Buchung ist schwebend und Ihre Plätze wurden noch nicht reserviert! (Zum Beispiel wegen noch ausstehender Zahlung)';
+  }
+  return '';
+}
+
+async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailTicket: boolean; emailBcc?: string | null }) {
   try {
     const bookingId = booking.id;
-    // Generate PDFs - only the ones the admin has actually enabled sending.
-    const invoiceBuffer = settings.sendmailInvoice ? await generateInvoicePDF(bookingId) : null;
-    const ticketBuffer = settings.sendmailTicket ? await generateTicketPDF(bookingId) : null;
+    // Old only attaches the ticket once the booking is actually ACTIVE
+    // (events.php:461-463) - a pending/waitlisted booking has no confirmed
+    // seat yet, so there's nothing to check in with.
+    const ticketBuffer = (settings.sendmailTicket && booking.status === 'CONFIRMED')
+      ? await generateTicketPDF(bookingId)
+      : null;
 
     let config = await prisma.templatesConfig.findUnique({ where: { id: 'default' } });
-    
+
     let template = config?.emails ? (config.emails as any).bookingConfirmation : null;
 
     if (!template) {
       console.warn('Booking confirmation template missing in DB. Using fallback template.');
       // Matches old Matukio's real, live mail_booking template content
-      // (hiron_matukio_templates.tmpl_name='mail_booking') - not generic
-      // placeholder text. The payment terms, waitlist policy, bank details
-      // and insurance recommendation are actual business content every
-      // customer needs, not decoration; the earlier default text here
-      // silently dropped all of it.
+      // (hiron_matukio_templates id=1) word-for-word - verified directly
+      // against the restored production DB. Old's real text never mentions
+      // an attached invoice or ticket at all (the invoice is its own
+      // separate email - see sendInvoiceEmail below - and old's own template
+      // simply doesn't call the ticket out either), so this doesn't either;
+      // a prior version of this fallback invented an "Im Anhang finden Sie
+      // Ihre Rechnung und Ihr Ticket" line that isn't in old's real content.
       template = {
         subject: 'Buchungsbestätigung: {EVENT_TITLE}',
         bodyHtml: `
@@ -70,8 +99,6 @@ async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailI
           {EVENT_DETAILS}
           <br/>
           {BOOKING_DETAILS}
-          <br/>
-          <p>Im Anhang finden Sie Ihre Rechnung und Ihr Ticket.</p>
           <hr/>
           <p>Die Kursgebühr wird 4 Wochen vor Kursbeginn fällig. Bei Kurzfristbuchungen (ab vier Wochen vor Kursbeginn) wird der gesamte Kurspreis sofort fällig.</p>
           <p>Wir führen eine echte Warteliste (der Kurs ist dann tatsächlich ausgebucht). Buchungen auf Warteliste sind daher erst zu bezahlen, wenn die Teilnahme auch sicher - und der Platz verbindlich bestätigt ist.</p>
@@ -136,9 +163,11 @@ async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailI
       .replace(/{EVENT_DETAILS}/g, eventDetails)
       .replace(/{BOOKING_DETAILS}/g, bookingDetails);
 
+    const intro = statusIntroLine(booking.status);
+    if (intro) bodyHtml = `<p>${intro}</p>` + bodyHtml;
+
     const attachments: { filename: string; content: Buffer; contentType: string }[] = [];
-    if (invoiceBuffer) attachments.push({ filename: `Rechnung_${booking.id.split('-')[0].toUpperCase()}.pdf`, content: invoiceBuffer, contentType: 'application/pdf' });
-    if (ticketBuffer) attachments.push({ filename: `Ticket_${booking.id.split('-')[0].toUpperCase()}.pdf`, content: ticketBuffer, contentType: 'application/pdf' });
+    if (ticketBuffer) attachments.push({ filename: `Ticket_${matukioBookingNumber(booking.id)}.pdf`, content: ticketBuffer, contentType: 'application/pdf' });
 
     const { transporter, isTestMode, testAccountUser, config: mailConfig } = await getNewsletterTransporter();
     const info = await transporter.sendMail({
@@ -157,6 +186,63 @@ async function sendCustomerConfirmationEmail(booking: any, settings: { sendmailI
 
   } catch (error) {
     console.error('Error sending booking confirmation email:', error);
+  }
+}
+
+// Old sends the invoice as its OWN separate email (events.php:557-587,
+// template id=9 "invoice_email"), not bundled into the booking confirmation
+// (which only ever carries the ticket - see sendCustomerConfirmationEmail).
+// Real gate, verified directly against events.php:558-562: only once the
+// booking is ACTIVE (our CONFIRMED) and its own final charged amount
+// (payment_brutto, i.e. totalPrice) is > 0 - a free/fully-discounted booking
+// gets no invoice email at all, matching generateInvoicePDF's own
+// MAT_INVOICE_NUMBER blanking rule (pdf.service.ts).
+async function sendInvoiceEmail(booking: any, settings: { sendmailInvoice: boolean; emailBcc?: string | null }) {
+  if (!settings.sendmailInvoice) return;
+  if (booking.status !== 'CONFIRMED') return;
+  if (!(booking.totalPrice > 0)) return;
+
+  try {
+    const { email: customerEmail } = resolveBookingCustomer(booking);
+    if (!customerEmail) {
+      console.error('Customer email missing for invoice email');
+      return;
+    }
+
+    const config = await prisma.templatesConfig.findUnique({ where: { id: 'default' } });
+    const invoiceTemplate = (config?.invoices as any) || {};
+
+    const invoiceNumber = await getOrCreateInvoiceNumber(booking.id);
+    const placeholders = buildBookingPlaceholders(booking);
+    placeholders.MAT_INVOICE_NUMBER = formatInvoiceNumber(invoiceNumber) || '';
+
+    // Matches old's real seeded template (hiron_matukio_templates id=9)
+    // word-for-word, used if the admin hasn't customized Vorlagen > Rechnung.
+    const subjectTemplate = invoiceTemplate.emailSubject || 'Ihre Rechnung MAT_BOOKING_NUMBER';
+    const bodyTemplate = invoiceTemplate.emailBody
+      || '<div id="mat-invoice-mail"><p><span style="line-height: 1.3em;">Sehr geehrte / geehrter MAT_BOOKING_NAME,<br /><br /></span>im Anhang finden Sie die Rechnung zu Ihrer Buchung.</p><p>MAT_SIGNATURE</p></div>';
+
+    const subject = renderMatTokens(subjectTemplate, placeholders);
+    const bodyHtml = renderMatTokens(bodyTemplate, placeholders);
+
+    const invoiceBuffer = await generateInvoicePDF(booking.id);
+
+    const { transporter, isTestMode, testAccountUser, config: mailConfig } = await getNewsletterTransporter();
+    const info = await transporter.sendMail({
+      from: mailConfig?.fromEmail ? `"${mailConfig.fromName || 'Flugschule Hirondelle'}" <${mailConfig.fromEmail}>` : '"Flugschule Hirondelle" <info@fs-hirondelle.de>',
+      to: customerEmail,
+      bcc: settings.emailBcc || undefined,
+      subject,
+      html: bodyHtml,
+      attachments: [{ filename: `Rechnung_${matukioBookingNumber(booking.id)}.pdf`, content: invoiceBuffer, contentType: 'application/pdf' }],
+    });
+
+    console.log('Invoice email sent: %s', info.messageId);
+    if (isTestMode) {
+      console.log('No real SMTP configured yet - test preview URL:', nodemailer.getTestMessageUrl(info), testAccountUser);
+    }
+  } catch (error) {
+    console.error('Error sending invoice email:', error);
   }
 }
 
