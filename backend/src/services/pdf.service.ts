@@ -33,6 +33,43 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
   // showed that day's date, not a frozen one - matched here faithfully
   // rather than "corrected" to a fixed date.
   const invoiceNumber = await getOrCreateInvoiceNumber(booking.id);
+  const templatesConfig = await prisma.templatesConfig.findUnique({ where: { id: 'default' } });
+  const template = (templatesConfig?.invoices as any)?.pdfTemplate as string | undefined;
+
+  if (template && template.trim()) {
+    // Admin-configurable invoice template (Vorlagen > Rechnung), seeded
+    // word-for-word from old Matukio's own real invoice template
+    // (hiron_matukio_templates, tmpl_name='invoice') - same MAT_* token
+    // engine already used for tickets/certificates/name tags, reduced from
+    // HTML to text lines since PDFKit draws text imperatively rather than
+    // rendering HTML/CSS (table borders/columns aren't reproduced, but the
+    // admin's exact wording, fields and token choices are). MAT_INVOICE_NUMBER
+    // is overridden with the real, legally-sequential number (old's
+    // #__matukio_invoice_number logic, migrated - see utils/invoiceNumber.ts)
+    // instead of buildBookingPlaceholders()'s generic booking-id fallback.
+    const placeholders = buildBookingPlaceholders(booking);
+    placeholders.MAT_INVOICE_NUMBER = formatInvoiceNumber(invoiceNumber) || '';
+    const rendered = renderMatTokens(template, placeholders);
+    const lines = htmlTemplateToLines(rendered);
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers: Buffer[] = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      doc.fontSize(20).text('Rechnung', { align: 'right' });
+      doc.moveDown();
+      doc.fontSize(10).font('Helvetica');
+      for (const line of lines) {
+        doc.text(line);
+      }
+
+      doc.end();
+    });
+  }
+
   const contactInfo = await getOrCreateHeaderContactInfo();
 
   return new Promise((resolve, reject) => {
@@ -42,7 +79,7 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', reject);
 
-    // Document styling
+    // Fallback layout, used only if no admin invoice template is configured.
     doc.fontSize(20).text('Rechnung', { align: 'right' });
     doc.moveDown();
 

@@ -54,9 +54,11 @@ export function buildBookingPlaceholders(booking: any): Record<string, string> {
     MAT_BOOKING_GROSS: brutto.toFixed(2),
     MAT_BOOKING_EXTRA_PAYMENT_OPTIONS: extraOptionsText,
     MAT_CSV_BOOKING_DETAILS: csvBookingDetails,
-    // Old's invoice number/date were never their own separate stored fields
-    // (no invoice_number/invoice_date column existed) - the booking's own
-    // id/creation date served as both, matching old's real invoicing.
+    // MAT_INVOICE_NUMBER is a placeholder default here (not old's real
+    // invoice number, which lives in #__matukio_invoice_number keyed by
+    // booking_id/year - see utils/invoiceNumber.ts) - generateInvoicePDF()
+    // overrides this with the real "{number}/{year}" value before
+    // rendering. Left as a fallback for any other caller.
     MAT_INVOICE_NUMBER: booking.id.replace(/-/g, '').slice(0, 10).toUpperCase(),
     MAT_INVOICE_DATE: new Date(booking.createdAt || Date.now()).toLocaleDateString('de-DE'),
     MAT_USER_NAME: booking.user?.name || name,
@@ -163,6 +165,11 @@ export function friendlyColumnName(token: string): string {
 export function htmlTemplateToLines(html: string): string[] {
   const withBreaks = html
     .replace(/<br\s*\/?>/gi, '\n')
+    // Table cells (the invoice template's two-column header/info boxes and
+    // line-items table) have no inherent line break between them - without
+    // this they'd run together as one unreadable word ("Your CompanyYour
+    // Logo"). A real newline per </tr> keeps each table row on its own line.
+    .replace(/<\/(td|th)>/gi, '  ')
     .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
     .replace(/<[^>]+>/g, '');
   return withBreaks
