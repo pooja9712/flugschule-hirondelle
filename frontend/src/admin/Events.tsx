@@ -27,12 +27,14 @@ import {
     useGetList,
     BulkDeleteButton,
     SaveButton,
+    TabbedFormTabs,
     Toolbar as RaToolbar
 } from 'react-admin';
 import { useState } from 'react';
 import { RichTextInput } from 'ra-input-rich-text';
-import { Grid, Box, Typography, Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Grid, Box, Typography, Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -44,6 +46,7 @@ import { TieredFeesList, TicketsList, AdditionalOptionsList } from './FeesLists'
 import { EventFilesList } from './EventFilesList';
 import { EventCustomFieldsSection } from './EventCustomFieldsSection';
 import { ImageUploadInput } from './ImageUploadInput';
+import { RichTextUploadToolbar } from './RichTextUploadToolbar';
 
 const API = '/api';
 
@@ -77,8 +80,33 @@ const DuplicateEventButton = () => {
     );
 };
 
+// Opens the event's public detail page (Buchungskalender's /:eventId view)
+// in a new tab. That page only lists published events, so the button is
+// disabled for unpublished ones rather than opening an empty calendar. It
+// shows the last saved state - unsaved form changes aren't in it yet.
+const PreviewEventButton = () => {
+    const record = useRecordContext();
+    if (!record) return null;
+    const button = (
+        <RaButton
+            label="Vorschau"
+            disabled={!record.published}
+            onClick={() => window.open(`/buchungskalender/${record.id}`, '_blank', 'noopener')}
+        >
+            <OpenInNewIcon />
+        </RaButton>
+    );
+    return record.published ? button : (
+        <Tooltip title="Nur veröffentlichte Veranstaltungen sind auf der Website sichtbar">
+            {/* span: a disabled button fires no events for the tooltip */}
+            <span>{button}</span>
+        </Tooltip>
+    );
+};
+
 const EventEditActions = () => (
     <TopToolbar>
+        <PreviewEventButton />
         <DuplicateEventButton />
     </TopToolbar>
 );
@@ -332,14 +360,14 @@ const ContentsTabContent = () => (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Wird auf Listen/Übersichtskarten gezeigt (z.B. im Kalender, in der Veranstaltungsliste).
                 </Typography>
-                <RichTextInput source="shortDescription" label="Kurzbeschreibung" />
+                <RichTextInput source="shortDescription" label="Kurzbeschreibung" toolbar={<RichTextUploadToolbar />} />
                 <ImageUploadInput source="imageUrl" label="Bild für die Übersicht" />
             </MCard>
             <MCard title="Beschreibung & Bild (Detailseite)">
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Wird nur auf der vollständigen Detailseite der Veranstaltung gezeigt. Wenn leer, wird die Kurzbeschreibung oben verwendet.
                 </Typography>
-                <RichTextInput source="description" label="Ausführliche Beschreibung" />
+                <RichTextInput source="description" label="Ausführliche Beschreibung" toolbar={<RichTextUploadToolbar />} />
                 <ImageUploadInput source="detailImageUrl" label="Bild für die Detailseite" />
             </MCard>
             <MCard title="Benutzerdefinierte Felder">
@@ -541,10 +569,10 @@ const AdjustmentsTabContent = () => (
     <Grid container spacing={2} sx={{ width: '100%' }}>
         <Grid size={{ xs: 12, md: 8 }}>
             <MCard title="Benutzerdefinierte Buchungs-Email">
-                <RichTextInput source="customBookingEmail" label="Benutzerdefinierte Buchungsbestätigung (E-Mail)" />
+                <RichTextInput source="customBookingEmail" label="Benutzerdefinierte Buchungsbestätigung (E-Mail)" toolbar={<RichTextUploadToolbar />} />
             </MCard>
             <MCard title="Benutzerdefiniertes Zertifikat">
-                <RichTextInput source="customCertificate" label="Zertifikat Inhalt" />
+                <RichTextInput source="customCertificate" label="Zertifikat Inhalt" toolbar={<RichTextUploadToolbar />} />
             </MCard>
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -632,9 +660,30 @@ const CreateToolbar = () => {
     );
 };
 
+// A second "Speichern" at the top, next to the tabs - the edit form is long
+// enough that scrolling to the bottom toolbar for every save was tedious.
+// It has to live inside the form (a SaveButton needs the form context), so
+// it's rendered through TabbedForm's `tabs` slot rather than the page's
+// TopToolbar actions; TabbedForm passes its tab props (value, onChange, url,
+// the tabs themselves...) to this element, which hands them on unchanged.
+const TabsWithSaveButton = (props: any) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', pr: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+            <TabbedFormTabs {...props} />
+        </Box>
+        <SaveButton label="Speichern" size="small" />
+    </Box>
+);
+
+// pessimistic: actually send the save right away and wait for the server.
+// react-admin's default ("undoable") jumps to the list instantly and only
+// sends the update ~5s later - leaving/refreshing in that window, or the
+// "Rückgängig" in the toast, silently dropped the change (e.g. a toggled
+// "Startzeit anzeigen" that never got saved). redirect={false}: stay on the
+// event after saving instead of being thrown back to the list.
 export const EventEdit = () => (
-    <Edit title="Veranstaltung bearbeiten" actions={<EventEditActions />}>
-        <TabbedForm>
+    <Edit title="Veranstaltung bearbeiten" actions={<EventEditActions />} mutationMode="pessimistic" redirect={false}>
+        <TabbedForm tabs={<TabsWithSaveButton />}>
             <FormTab label="Inhalte"><ContentsTabContent /></FormTab>
             <FormTab label="Veranstaltungsort"><VenueTabContent /></FormTab>
             <FormTab label="Buchung"><BookingTabContent /></FormTab>
