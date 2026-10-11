@@ -1,4 +1,30 @@
+import crypto from 'crypto';
 import { resolveBookingCustomer } from './bookingCustomer';
+
+// Old's real MatukioHelperBooking::getBookingId() - strtoupper(substr(sha1($id), 0, 10)) -
+// a SHA1 hash of the booking's own id, not a slice of the id itself (there's
+// no relation between the two beyond both being 10 uppercase hex chars).
+export function matukioBookingNumber(id: string): string {
+  return crypto.createHash('sha1').update(String(id)).digest('hex').slice(0, 10).toUpperCase();
+}
+
+// Old's real #__matukio_currencies row for this site (queried directly from
+// the restored production DB, d03dbe51.hiron_matukio_currencies): sign "€",
+// position=1 (left of the amount), decimalsign "." - MatukioHelperEvents::
+// getFormatedCurrency() then does `$sign . " " . number_format(...)`.
+function matukioCurrency(value: number): string {
+  return `€ ${value.toFixed(2)}`;
+}
+
+// Old's real site config (hiron_extensions.params for COM_MATUKIO):
+// date_format_without_time = "Y-m-d" - used for both MAT_DATE (today, at
+// print time) and MAT_INVOICE_DATE (the booking's own fixed bookingdate).
+function matukioDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 // Bare MAT_* token substitution, matching the exact convention documented in
 // the admin's TemplatesBuilder (listViews/certificates/tickets/csvXml tabs) -
@@ -44,14 +70,14 @@ export function buildBookingPlaceholders(booking: any): Record<string, string> {
     MAT_BOOKING_COMPANY: details.company || '',
     MAT_BOOKING_COMMENT: booking.remarks || '',
     MAT_BOOKING_ID: booking.id,
-    MAT_BOOKING_NUMBER: booking.id.replace(/-/g, '').slice(0, 10).toUpperCase(),
+    MAT_BOOKING_NUMBER: matukioBookingNumber(booking.id),
     MAT_BOOKING_NRBOOKED: String(seats),
     MAT_BOOKING_BOOKEDNR: String(seats),
     MAT_BOOKING_PAYMENT_METHOD: booking.paymentMethod || '',
-    MAT_BOOKING_PAYMENT_NETTO: netto.toFixed(2),
-    MAT_BOOKING_PAYMENT_TAX: tax.toFixed(2),
-    MAT_BOOKING_PAYMENT_BRUTTO: brutto.toFixed(2),
-    MAT_BOOKING_GROSS: brutto.toFixed(2),
+    MAT_BOOKING_PAYMENT_NETTO: matukioCurrency(netto),
+    MAT_BOOKING_PAYMENT_TAX: matukioCurrency(tax),
+    MAT_BOOKING_PAYMENT_BRUTTO: matukioCurrency(brutto),
+    MAT_BOOKING_GROSS: matukioCurrency(brutto),
     MAT_BOOKING_EXTRA_PAYMENT_OPTIONS: extraOptionsText,
     MAT_CSV_BOOKING_DETAILS: csvBookingDetails,
     // MAT_INVOICE_NUMBER is a placeholder default here (not old's real
@@ -59,19 +85,19 @@ export function buildBookingPlaceholders(booking: any): Record<string, string> {
     // booking_id/year - see utils/invoiceNumber.ts) - generateInvoicePDF()
     // overrides this with the real "{number}/{year}" value before
     // rendering. Left as a fallback for any other caller.
-    MAT_INVOICE_NUMBER: booking.id.replace(/-/g, '').slice(0, 10).toUpperCase(),
-    MAT_INVOICE_DATE: new Date(booking.createdAt || Date.now()).toLocaleDateString('de-DE'),
+    MAT_INVOICE_NUMBER: matukioBookingNumber(booking.id),
+    MAT_INVOICE_DATE: matukioDate(new Date(booking.createdAt || Date.now())),
     MAT_USER_NAME: booking.user?.name || name,
     MAT_EVENT_NUMBER: booking.event?.eventNumber || '',
     MAT_EVENT_TITLE: booking.event?.title || '',
     MAT_EVENT_BEGIN: booking.event ? new Date(booking.event.startDate).toLocaleString('de-DE') : '',
     MAT_EVENT_END: booking.event?.endDate ? new Date(booking.event.endDate).toLocaleString('de-DE') : '',
-    MAT_EVENT_FEES: booking.event?.feePerPerson != null ? Number(booking.event.feePerPerson).toFixed(2) : '',
+    MAT_EVENT_FEES: booking.event?.feePerPerson != null ? matukioCurrency(Number(booking.event.feePerPerson)) : '',
     MAT_EVENT_ALL_DETAILS_HTML: booking.event
       ? `<strong>${booking.event.title}</strong><br/>${new Date(booking.event.startDate).toLocaleString('de-DE')}${booking.event.endDate ? ' - ' + new Date(booking.event.endDate).toLocaleString('de-DE') : ''}`
       : '',
     MAT_EVENT_ALL_DETAILS_TEXT: eventAllDetailsText,
-    MAT_DATE: new Date().toLocaleDateString('de-DE'),
+    MAT_DATE: matukioDate(new Date()),
     MAT_SIGNATURE: 'Flugschule Hirondelle',
     // A blank line for physical/pen signing on a printed signature list -
     // never real data, matching old's own use (a signature can't be

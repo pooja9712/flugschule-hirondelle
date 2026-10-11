@@ -4,11 +4,35 @@ import { prisma } from '../utils/prisma';
 import fs from 'fs';
 import path from 'path';
 import { resolveBookingCustomer } from '../utils/bookingCustomer';
-import { buildBookingPlaceholders, renderMatTokens, htmlTemplateToLines } from '../utils/matukioTemplates';
+import { buildBookingPlaceholders, renderMatTokens, htmlTemplateToLines, matukioBookingNumber } from '../utils/matukioTemplates';
 import { getOrCreateInvoiceNumber, formatInvoiceNumber } from '../utils/invoiceNumber';
 import { getOrCreateConfig as getOrCreateHeaderContactInfo } from '../routes/headerContact.routes';
 
 const uploadsDir = path.join(__dirname, '../../uploads');
+
+// PDFKit's bundled standard-14 Helvetica font uses Adobe's original 1985 AFM
+// metrics, which predate the Euro sign (added to Windows-1252 in 1998) - the
+// glyph has no width entry, so doc.text() silently drops "€" from the output
+// entirely (confirmed: "950.00 €" renders as "950.00 " with a trailing
+// space, invisible in the PDF) rather than erroring. "EUR" avoids the
+// missing-glyph bug without embedding a custom Unicode font.
+function formatEurPdf(value: number): string {
+  return `${value.toFixed(2)} EUR`;
+}
+
+// Same fix, applied to the already-formatted "€ 123.45"-style strings that
+// buildBookingPlaceholders() produces for MAT_BOOKING_PAYMENT_*/MAT_EVENT_FEES
+// (correct as real "€" for the CSV/XML export and participant/signature-list
+// plain-text downloads, which render it fine - only PDFKit's glyph-less
+// Helvetica needs the swap, so this is applied to a copy of the placeholders
+// map rather than to buildBookingPlaceholders() itself).
+function makePdfSafePlaceholders(placeholders: Record<string, string>): Record<string, string> {
+  const safe = { ...placeholders };
+  for (const key of ['MAT_BOOKING_PAYMENT_NETTO', 'MAT_BOOKING_PAYMENT_TAX', 'MAT_BOOKING_PAYMENT_BRUTTO', 'MAT_BOOKING_GROSS', 'MAT_EVENT_FEES']) {
+    if (safe[key]) safe[key] = safe[key].replace(/€\s*/g, '').trim() + ' EUR';
+  }
+  return safe;
+}
 
 export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
   const booking = await prisma.booking.findUnique({
@@ -47,8 +71,15 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
     // is overridden with the real, legally-sequential number (old's
     // #__matukio_invoice_number logic, migrated - see utils/invoiceNumber.ts)
     // instead of buildBookingPlaceholders()'s generic booking-id fallback.
-    const placeholders = buildBookingPlaceholders(booking);
-    placeholders.MAT_INVOICE_NUMBER = formatInvoiceNumber(invoiceNumber) || '';
+    const placeholders = makePdfSafePlaceholders(buildBookingPlaceholders(booking));
+    // Old's real print-time check (MatukioHelperTemplates::getReplaces(),
+    // templates.php:337) only fills MAT_INVOICE_NUMBER in if the booking's
+    // own final amount (payment_brutto, i.e. our totalPrice) is > 0 - a
+    // booking fully covered by a voucher still has a real, already-assigned
+    // number (see utils/invoiceNumber.ts), but old's own invoice document
+    // would print that line blank for it, so this matches that exactly
+    // rather than always showing the number whenever one exists.
+    placeholders.MAT_INVOICE_NUMBER = booking.totalPrice > 0 ? (formatInvoiceNumber(invoiceNumber) || '') : '';
     const rendered = renderMatTokens(template, placeholders);
     const lines = htmlTemplateToLines(rendered);
 
@@ -105,7 +136,7 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
     if (invoiceNumber) {
       doc.fontSize(12).text(`Rechnungsnummer: ${formatInvoiceNumber(invoiceNumber)}`, { align: 'right' });
     }
-    doc.text(`Buchungsnummer: ${booking.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`, { align: 'right' });
+    doc.text(`Buchungsnummer: ${matukioBookingNumber(booking.id)}`, { align: 'right' });
     doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, { align: 'right' });
     if (booking.paymentMethod) doc.text(`Zahlungsmethode: ${booking.paymentMethod}`, { align: 'right' });
 
@@ -129,8 +160,8 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
       itemsTotal += item.ticket.price * item.quantity;
       doc.text(item.ticket.name, 50, y);
       doc.text(item.quantity.toString(), 300, y);
-      doc.text(`${item.ticket.price.toFixed(2)} €`, 400, y);
-      doc.text(`${(item.ticket.price * item.quantity).toFixed(2)} €`, 500, y);
+      doc.text(formatEurPdf(item.ticket.price), 400, y);
+      doc.text(formatEurPdf(item.ticket.price * item.quantity), 500, y);
       y += 20;
     });
 
@@ -145,7 +176,7 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
     if (discount > 0.01) {
       doc.font('Helvetica');
       doc.text('Rabatt:', 350, y);
-      doc.text(`-${discount.toFixed(2)} €`, 500, y);
+      doc.text(`-${formatEurPdf(discount)}`, 500, y);
       y += 20;
     }
 
@@ -162,16 +193,16 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
       const taxAmount = booking.priceTax ?? booking.totalPrice - netAmount;
       doc.font('Helvetica');
       doc.text('Nettobetrag:', 350, y);
-      doc.text(`${netAmount.toFixed(2)} €`, 500, y);
+      doc.text(formatEurPdf(netAmount), 500, y);
       y += 20;
       doc.text(`zzgl. ${taxRatePercent}% MwSt.:`, 350, y);
-      doc.text(`${taxAmount.toFixed(2)} €`, 500, y);
+      doc.text(formatEurPdf(taxAmount), 500, y);
       y += 20;
     }
 
     doc.font('Helvetica-Bold');
     doc.text('Gesamtbetrag:', 350, y);
-    doc.text(`${booking.totalPrice.toFixed(2)} €`, 500, y);
+    doc.text(formatEurPdf(booking.totalPrice), 500, y);
 
     // Save to filesystem for later download
     const invoicesDir = path.join(uploadsDir, 'invoices');
@@ -230,7 +261,7 @@ export async function generateTicketPDF(bookingId: string): Promise<Buffer> {
     doc.moveDown(3);
 
     if (template && template.trim()) {
-      const rendered = renderMatTokens(template, buildBookingPlaceholders(booking));
+      const rendered = renderMatTokens(template, makePdfSafePlaceholders(buildBookingPlaceholders(booking)));
       const lines = htmlTemplateToLines(rendered).filter(l => !l.includes('MAT_BOOKING_CHECKIN_QRCODE'));
       doc.fontSize(12).font('Helvetica');
       for (const line of lines) {
@@ -259,8 +290,8 @@ export async function generateTicketPDF(bookingId: string): Promise<Buffer> {
       });
 
       doc.moveDown();
-      doc.text(`Buchungsnummer: ${booking.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`);
-      doc.text(`Gesamtpreis: ${booking.totalPrice.toFixed(2)} €`);
+      doc.text(`Buchungsnummer: ${matukioBookingNumber(booking.id)}`);
+      doc.text(`Gesamtpreis: ${formatEurPdf(booking.totalPrice)}`);
     }
 
     // Real check-in QR code, always drawn regardless of template
@@ -301,7 +332,7 @@ export async function generateNameTagPDF(bookingId: string): Promise<Buffer> {
     doc.fillColor('black');
 
     if (template && template.trim()) {
-      const rendered = renderMatTokens(template, buildBookingPlaceholders(booking));
+      const rendered = renderMatTokens(template, makePdfSafePlaceholders(buildBookingPlaceholders(booking)));
       const lines = htmlTemplateToLines(rendered);
       doc.fontSize(13).font('Helvetica');
       let y = 55;
@@ -337,7 +368,7 @@ export async function generateCertificatePDF(bookingId: string): Promise<Buffer 
   const template = (templatesConfig?.certificates as any)?.pdfTemplate as string | undefined;
   if (!template || !template.trim()) return null;
 
-  const rendered = renderMatTokens(template, buildBookingPlaceholders(booking));
+  const rendered = renderMatTokens(template, makePdfSafePlaceholders(buildBookingPlaceholders(booking)));
   const lines = htmlTemplateToLines(rendered);
 
   return new Promise((resolve, reject) => {

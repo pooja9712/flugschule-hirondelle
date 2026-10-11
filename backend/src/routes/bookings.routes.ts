@@ -9,7 +9,7 @@ import { JWT_SECRET } from '../utils/config';
 import jwt from 'jsonwebtoken';
 import { resolveBookingCustomer } from '../utils/bookingCustomer';
 import { getNewsletterTransporter } from '../utils/newsletterTransporter';
-import { buildBookingPlaceholders, renderMatTokens, parseCsvTemplateTokens, friendlyColumnName, htmlTemplateToLines } from '../utils/matukioTemplates';
+import { buildBookingPlaceholders, renderMatTokens, parseCsvTemplateTokens, friendlyColumnName, htmlTemplateToLines, matukioBookingNumber } from '../utils/matukioTemplates';
 import { escapeHtml } from '../utils/htmlEscape';
 import { csvEscape } from '../utils/csvEscape';
 import { publicLookupRateLimit } from '../middlewares/rateLimit.middleware';
@@ -282,7 +282,7 @@ function serializeBookingForList(b: any) {
     customerName,
     customerEmail,
     bookedSeats,
-    shortId: b.id.replace(/-/g, '').slice(0, 10).toUpperCase(),
+    shortId: matukioBookingNumber(b.id),
   };
 }
 
@@ -624,7 +624,7 @@ router.get('/export/csv', authenticateJWT, authorizeAdmin, async (req, res) => {
         const details = (b.customerDetails as any) || {};
         const seats = b.items.reduce((s, i) => s + i.quantity, 0);
         return [
-          b.id.replace(/-/g, '').slice(0, 10).toUpperCase(),
+          matukioBookingNumber(b.id),
           b.event.title,
           String(seats),
           details.salutation || '',
