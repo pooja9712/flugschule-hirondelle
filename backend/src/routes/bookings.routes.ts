@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { authenticateJWT, authorizeAdmin, AuthRequest } from '../middlewares/auth.middleware';
 import { sendBookingConfirmationEmail, sendCancellationEmail } from '../services/mailer.service';
@@ -170,7 +171,70 @@ const STATUS_PSEUDO: Record<string, string[] | undefined> = {
   deleted: ['CANCELLED'],
 };
 
-function buildBookingWhereClause(query: any) {
+// Spelling variants of a search term so umlauts can be typed either way:
+// "mueller" also tries "müller". (The plain "muller" spelling needs no
+// variant - utf8mb4_unicode_ci already treats ü = u, ß = ss and ignores
+// case.)
+function umlautVariants(term: string): string[] {
+  const spelled = term
+    .replace(/ae/g, 'ä').replace(/oe/g, 'ö').replace(/ue/g, 'ü')
+    .replace(/Ae/g, 'Ä').replace(/Oe/g, 'Ö').replace(/Ue/g, 'Ü');
+  return spelled === term ? [term] : [term, spelled];
+}
+
+// The admin search box: one free-text term matched against the customer's
+// name, e-mail and the booking ID - case- and umlaut-insensitive. The ID can
+// be the short ID shown in the list's "ID" column (e.g. "F8FE810BF4"), the
+// full UUID, or old Matukio's numeric booking number. An optional "id:"
+// prefix limits the search to IDs only.
+async function findBookingIdsForSearch(raw: string): Promise<string[]> {
+  let term = raw.trim();
+  const idOnly = /^id:/i.test(term);
+  if (idOnly) term = term.slice(3).trim();
+  if (!term) return [];
+
+  const conditions: Prisma.Sql[] = [];
+
+  if (!idOnly) {
+    for (const variant of umlautVariants(term)) {
+      const like = `%${variant.replace(/[\\%_]/g, c => `\\${c}`)}%`;
+      // customerDetails is stored with a binary (case-sensitive) collation,
+      // so each extracted value is re-collated to unicode_ci for the match.
+      // The explicit CONVERT(... USING utf8mb4) is required, not cosmetic:
+      // JSON_EXTRACT's own result charset is version-dependent (confirmed
+      // directly - this server's MariaDB 10.4 returns plain `utf8`, which a
+      // bare `COLLATE utf8mb4_unicode_ci` then rejects outright with
+      // "COLLATION 'utf8mb4_unicode_ci' is not valid for CHARACTER SET
+      // 'utf8'", a hard 500 on every single search). Forcing the charset
+      // first makes the COLLATE valid regardless of what JSON_EXTRACT
+      // happened to return on a given server.
+      for (const path of ['$.name', '$.firstName', '$.lastName', '$.email']) {
+        conditions.push(Prisma.sql`CONVERT(JSON_UNQUOTE(JSON_EXTRACT(b.customerDetails, ${path})) USING utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ${like}`);
+      }
+      conditions.push(Prisma.sql`u.name LIKE ${like}`, Prisma.sql`u.email LIKE ${like}`);
+    }
+  }
+
+  if (/^\d+$/.test(term)) {
+    conditions.push(Prisma.sql`JSON_EXTRACT(b.customerDetails, '$.oldBookingId') = ${Number(term)}`);
+  }
+  if (/^[0-9a-f-]{4,}$/i.test(term)) {
+    // Short ID = the UUID without dashes, so re-insert them (8-4-4-4-12)
+    // to turn it back into a prefix of the stored id.
+    const hex = term.replace(/-/g, '').toLowerCase();
+    const prefix = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)]
+      .filter(Boolean).join('-');
+    conditions.push(Prisma.sql`b.id LIKE ${`${prefix}%`}`);
+  }
+
+  if (!conditions.length) return [];
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT b.id FROM Booking b LEFT JOIN User u ON u.id = b.userId
+    WHERE ${Prisma.join(conditions, ' OR ')}`;
+  return rows.map(r => r.id);
+}
+
+async function buildBookingWhereClause(query: any) {
   const { q, status, eventId, time, ids } = query;
   const whereClause: any = {};
   const andConditions: any[] = [];
@@ -180,29 +244,8 @@ function buildBookingWhereClause(query: any) {
     return whereClause;
   }
 
-  if (q) {
-    const qStr = String(q);
-    const idMatch = qStr.match(/^id:(.+)$/i);
-    // "code:XYZ" - find every booking that redeemed a given voucher code,
-    // the reporting use case old Matukio's own coupon_used column existed
-    // for (see Booking.voucherCode's comment in schema.prisma).
-    const codeMatch = qStr.match(/^code:(.+)$/i);
-    if (idMatch) {
-      whereClause.id = idMatch[1].trim();
-    } else if (codeMatch) {
-      whereClause.voucherCode = codeMatch[1].trim();
-    } else {
-      andConditions.push({
-        OR: [
-          { user: { name: { contains: qStr } } },
-          { user: { email: { contains: qStr } } },
-          { customerDetails: { path: '$.name', string_contains: qStr } },
-          { customerDetails: { path: '$.firstName', string_contains: qStr } },
-          { customerDetails: { path: '$.lastName', string_contains: qStr } },
-          { customerDetails: { path: '$.email', string_contains: qStr } },
-        ],
-      });
-    }
+  if (q && String(q).trim()) {
+    andConditions.push({ id: { in: await findBookingIdsForSearch(String(q)) } });
   }
 
   if (eventId) whereClause.eventId = eventId;
@@ -248,7 +291,7 @@ router.get('/', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
     const { _sort, _order, _start, _end } = req.query;
 
-    const whereClause = buildBookingWhereClause(req.query);
+    const whereClause = await buildBookingWhereClause(req.query);
 
     const skip = _start ? Number(_start) : 0;
     const take = _end ? Number(_end) - skip : 100;
@@ -528,7 +571,7 @@ function formatExtraOptionsList(selectedExtras: any[] | undefined): string {
 
 router.get('/export/csv', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
-    const whereClause = buildBookingWhereClause(req.query);
+    const whereClause = await buildBookingWhereClause(req.query);
     const bookings = await prisma.booking.findMany({
       where: whereClause,
       include: { event: true, user: true, items: { include: { ticket: true } } },
@@ -693,7 +736,7 @@ function renderWithTemplate(template: string | undefined, marker: string, title:
 
 router.get('/export/participant-list', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
-    const whereClause = buildBookingWhereClause(req.query);
+    const whereClause = await buildBookingWhereClause(req.query);
     const bookings = await prisma.booking.findMany({
       where: whereClause,
       include: { event: true, user: true, items: { include: { ticket: true } } },
@@ -710,7 +753,7 @@ router.get('/export/participant-list', authenticateJWT, authorizeAdmin, async (r
 
 router.get('/export/signature-list', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
-    const whereClause = buildBookingWhereClause(req.query);
+    const whereClause = await buildBookingWhereClause(req.query);
     const bookings = await prisma.booking.findMany({
       where: whereClause,
       include: { event: true, user: true, items: { include: { ticket: true } } },

@@ -5,9 +5,7 @@ import {
     DateField,
     NumberField,
     Filter,
-    TextInput,
     SelectInput,
-    ReferenceInput,
     ShowButton,
     Show,
     TopToolbar,
@@ -20,14 +18,18 @@ import {
     Button as RaButton,
     FunctionField,
     BooleanField,
+    useInput,
+    useGetList,
 } from 'react-admin';
 import { useState, useEffect, useRef } from 'react';
 import {
     Table, TableBody, TableCell, TableRow, Paper, Typography, Box, Grid, Card, CardContent,
     FormControl, InputLabel, Select, MenuItem, Button, TextField as MuiTextField, Divider,
     Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, Chip,
-    Checkbox, FormControlLabel, CircularProgress
+    Checkbox, FormControlLabel, CircularProgress, ListSubheader, InputAdornment
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -64,8 +66,11 @@ async function postBulk(path: string, body: any) {
 
 // --- Filters (mirrors Matukio's search box, "Active or Floating" status
 // dropdown, event dropdown, and time-period dropdown) ---
+// No "Aktiv und ausstehend" / "Alle Zeiten" entries in these lists: the
+// SelectInput's own empty option already stands for them (the backend
+// treats a missing status as active+pending and a missing period as all
+// times) - listing them again showed every such entry twice.
 const statusChoices = [
-    { id: 'activeandpending', name: 'Aktiv und ausstehend' },
     { id: 'all', name: 'Alle' },
     { id: 'active', name: 'Bestätigt' },
     { id: 'pending', name: 'Ausstehend' },
@@ -77,30 +82,203 @@ const statusChoices = [
 ];
 
 const timeChoices = [
-    { id: 'all', name: 'Alle Zeiten' },
     { id: 'day', name: 'Letzter Tag' },
     { id: 'week', name: 'Letzte Woche' },
     { id: 'month', name: 'Letzter Monat' },
     { id: 'year', name: 'Letztes Jahr' },
 ];
 
+// Umlaut-insensitive search text: "Südafrika" must be found by typing
+// "sudafrika" (old's select2 dropdown ignored the dots too) or "suedafrika".
+// The plain variant strips the dots (ü -> u); the transliterated variant
+// spells them out (ü -> ue), and the search term is tested against both.
+const foldGerman = (text: string, transliterate = false) => {
+    let t = text.toLowerCase().replace(/ß/g, 'ss');
+    if (transliterate) t = t.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue');
+    return t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+};
+
+// Event filter with a search box inside the open dropdown (old's Joomla
+// list used a select2-style searchable dropdown - with hundreds of dated
+// events, scrolling a plain select to find one is impractical). Plain MUI
+// Select + useInput instead of ReferenceInput/SelectInput, since
+// SelectInput has no way to put a text field inside its menu.
+const EventFilterInput = ({ source, label }: { source: string; label: string; alwaysOn?: boolean }) => {
+    const { field } = useInput({ source });
+    const { data = [] } = useGetList('events', {
+        pagination: { page: 1, perPage: 500 },
+        sort: { field: 'startDate', order: 'DESC' },
+    });
+    const [search, setSearch] = useState('');
+
+    // Old's own event filter (administrator/components/com_matukio/
+    // views/bookings/view.html.php) builds each option as
+    // CONCAT(title, ' ', begin) - every recurring date of e.g. "Grundkurs"
+    // is otherwise an identical, indistinguishable entry with no way to
+    // tell which actual date you're picking.
+    const optionText = (record: any) => `${record.title} ${eventOptionSqlDate(record.startDate)}`;
+
+    // Chrome's page translation rewrites the menu items' text in the DOM
+    // only - `data` stays German. So the search is matched against both the
+    // German option text and whatever the item currently shows on screen
+    // (e.g. "South Africa VIP Tour" when the admin translated the page).
+    // For that to work every item stays mounted and non-matching ones are
+    // just hidden - unmounting them would throw away Chrome's translation.
+    const itemRefs = useRef<Record<string, HTMLLIElement | null>>({});
+    const matches = (e: any, term: string) => {
+        const shown = itemRefs.current[e.id]?.textContent || '';
+        return [optionText(e), shown].some(text =>
+            foldGerman(text).includes(term) || foldGerman(text, true).includes(term));
+    };
+    const term = foldGerman(search.trim());
+    // Keep the currently selected event visible even if it doesn't match.
+    const isVisible = (e: any) => !term || e.id === field.value || matches(e, term);
+    const visibleCount = data.filter(isVisible).length;
+
+    const selectedValue = data.some((e: any) => e.id === field.value) ? field.value : '';
+
+    return (
+        <FormControl variant="filled" size="small" margin="dense" sx={{ minWidth: 200 }}>
+            <InputLabel>{label}</InputLabel>
+            <Select
+                value={selectedValue}
+                // '' (not undefined) for "Alle Events" - see SearchInput's apply()
+                onChange={e => field.onChange(e.target.value)}
+                onClose={() => setSearch('')}
+                // Focus must stay in the search field, not jump to the
+                // first menu item when the menu opens.
+                MenuProps={{ autoFocus: false, slotProps: { paper: { sx: { maxHeight: 450 } } } }}
+                renderValue={(value: any) => {
+                    const ev = data.find((e: any) => e.id === value);
+                    return ev ? optionText(ev) : 'Alle Events';
+                }}
+                displayEmpty={false}
+            >
+                <ListSubheader sx={{ bgcolor: 'background.paper', pt: 1, pb: 1, lineHeight: 'normal' }}>
+                    <MuiTextField
+                        size="small"
+                        autoFocus
+                        fullWidth
+                        placeholder="Event suchen…"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        // Stop the Select's built-in type-to-jump from
+                        // stealing keystrokes (Escape still closes it).
+                        onKeyDown={e => { if (e.key !== 'Escape') e.stopPropagation(); }}
+                        slotProps={{ input: { endAdornment: <InputAdornment position="end"><SearchIcon fontSize="small" /></InputAdornment> } }}
+                    />
+                </ListSubheader>
+                <MenuItem value="">Alle Events</MenuItem>
+                {data.map((e: any) => {
+                    const shown = isVisible(e);
+                    return (
+                        <MenuItem
+                            key={e.id}
+                            value={e.id}
+                            ref={el => { itemRefs.current[e.id] = el; }}
+                            // disabled too, so arrow keys skip hidden items
+                            disabled={!shown}
+                            sx={shown ? undefined : { display: 'none' }}
+                        >
+                            {optionText(e)}
+                        </MenuItem>
+                    );
+                })}
+                {visibleCount === 0 && (
+                    <MenuItem disabled>Keine Events gefunden</MenuItem>
+                )}
+            </Select>
+        </FormControl>
+    );
+};
+
+// Free-text search box (name, e-mail, ID). The list only starts filtering
+// from the 3rd typed letter - one or two letters match almost every
+// booking, so they leave the full list showing. Emptying the box (typing it
+// away or the clear button) shows all bookings again right away.
+const MIN_SEARCH_LENGTH = 3;
+
+const SearchInput = ({ source, label }: { source: string; label: string; alwaysOn?: boolean }) => {
+    const { field } = useInput({ source });
+    const [text, setText] = useState<string>(field.value || '');
+    // The filter value this box last applied - lets an outside change (e.g.
+    // react-admin's "remove all filters") be told apart from our own.
+    const applied = useRef<string>(field.value || '');
+
+    useEffect(() => {
+        const outside = field.value || '';
+        if (outside !== applied.current) {
+            applied.current = outside;
+            setText(outside);
+        }
+    }, [field.value]);
+
+    const apply = (value: string) => {
+        if (value === applied.current) return;
+        applied.current = value;
+        // '' rather than undefined: react-admin merges the filter form's
+        // values into the current filters, so an undefined q would leave the
+        // old search in place. An empty string actually removes it.
+        field.onChange(value);
+    };
+
+    // Debounced, like react-admin's own TextInput.
+    useEffect(() => {
+        const term = text.trim();
+        const target = term.length >= MIN_SEARCH_LENGTH ? term : '';
+        if (!target) { apply(''); return; }
+        const t = setTimeout(() => apply(target), 300);
+        return () => clearTimeout(t);
+    }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return (
+        <MuiTextField
+            label={label}
+            variant="filled"
+            size="small"
+            margin="dense"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            sx={{ minWidth: 280 }}
+            // MUI 9 dropped the InputProps shorthand - slotProps.input it is.
+            slotProps={{
+                input: {
+                    endAdornment: text ? (
+                        <InputAdornment position="end">
+                            <IconButton size="small" aria-label="Suche leeren" onClick={() => setText('')}>
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </InputAdornment>
+                    ) : undefined,
+                },
+            }}
+        />
+    );
+};
+
+// react-admin remembers list filters (URL + local storage), so a search
+// typed earlier came back on every refresh / click on "Buchungen". Opening
+// the list now always starts with an empty search box; the other filters
+// (status, event, period) are still remembered as before.
+const ClearSearchOnMount = () => {
+    const { filterValues, displayedFilters, setFilters } = useListContext();
+    useEffect(() => {
+        // Also drop values remembered from before their dropdown entries
+        // were folded into the empty option (see statusChoices).
+        const { q, ...rest } = filterValues || {};
+        let changed = !!q;
+        if (rest.status === 'activeandpending') { delete rest.status; changed = true; }
+        if (rest.time === 'all') { delete rest.time; changed = true; }
+        if (changed) setFilters(rest, displayedFilters);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return null;
+};
+
 const BookingFilter = (props: any) => (
     <Filter {...props}>
-        <TextInput label="Suche (Name, E-Mail, id:123, code:GUTSCHEIN10)" source="q" alwaysOn />
-        <SelectInput label="Status" source="status" choices={statusChoices} alwaysOn emptyText="Alle" />
-        <ReferenceInput label="Event" source="eventId" reference="events" perPage={500} sort={{ field: 'startDate', order: 'DESC' }} alwaysOn>
-            {/* Old's own event filter (administrator/components/com_matukio/
-                views/bookings/view.html.php) builds each option as
-                CONCAT(title, ' ', begin) - every recurring date of e.g.
-                "Grundkurs" is otherwise an identical, indistinguishable
-                entry with no way to tell which actual date you're picking.
-                Date first (old's real per-user-report layout) since events
-                are already sorted newest-first. */}
-            <SelectInput
-                optionText={(record: any) => `${record.title} ${eventOptionSqlDate(record.startDate)}`}
-                emptyText="Alle Events"
-            />
-        </ReferenceInput>
+        <SearchInput label="Suche (Name, E-Mail, ID)" source="q" alwaysOn />
+        <SelectInput label="Status" source="status" choices={statusChoices} alwaysOn emptyText="Aktiv und ausstehend" />
+        <EventFilterInput label="Event" source="eventId" alwaysOn />
         <SelectInput label="Zeitraum" source="time" choices={timeChoices} alwaysOn emptyText="Alle Zeiten" />
     </Filter>
 );
@@ -224,8 +402,8 @@ const BookingListActions = () => {
     // shows/saves it under a random blob id instead of the filename the
     // backend's Content-Disposition header specifies. An <a download> with
     // that name read back out of the response header does it properly.
-    const downloadExport = (path: string) => {
-        fetch(`/api/bookings${path}?${buildExportQs().toString()}`, { headers: authHeaders() })
+    const downloadExport = (path: string, qs: URLSearchParams = buildExportQs()) => {
+        fetch(`/api/bookings${path}?${qs.toString()}`, { headers: authHeaders() })
             .then(async (res) => {
                 const disposition = res.headers.get('Content-Disposition') || '';
                 const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/);
@@ -283,6 +461,13 @@ const BookingListActions = () => {
             <Tooltip title="Als CSV exportieren">
                 <IconButton onClick={() => downloadExport('/export/csv')}><DownloadIcon /></IconButton>
             </Tooltip>
+            {/* Every booking in the database - ignores the row selection and
+                all list filters (status=all, since no status at all would
+                mean the backend's active+pending default). Queried fresh on
+                each click, so bookings added since the page loaded are in. */}
+            <RaButton label="Alle exportieren (CSV)" onClick={() => downloadExport('/export/csv', new URLSearchParams({ status: 'all' }))}>
+                <DownloadIcon />
+            </RaButton>
 
             <ComposeDialog
                 open={rejectOpen}
@@ -351,11 +536,12 @@ const StatusChip = ({ source, label: _label }: { source?: string, label?: string
 };
 
 export const BookingList = () => (
-    <List filters={<BookingFilter />} filterDefaultValues={{ status: 'activeandpending' }} sort={{ field: 'createdAt', order: 'DESC' }} actions={false}>
+    <List filters={<BookingFilter />} sort={{ field: 'createdAt', order: 'DESC' }} actions={false}>
         {/* We place the actions here inside the List context rather than in the
             actions prop so they can wrap freely. The grid wrapper with minmax(0, 1fr)
             prevents the wide Datagrid from forcing the parent Card to expand horizontally,
             which was previously giving the flex container too much space and preventing wrapping. */}
+        <ClearSearchOnMount />
         <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', width: '100%' }}>
             <Box sx={{ mb: 2 }}>
                 <BookingListActions />
