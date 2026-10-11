@@ -17,6 +17,7 @@ import { subscribeToNewsletter } from './newsletters.routes';
 const router = Router();
 
 import { generateInvoicePDF, generateTicketPDF, generateNameTagPDF, generateCertificatePDF } from '../services/pdf.service';
+import { getOrCreateInvoiceNumber, formatInvoiceNumber } from '../utils/invoiceNumber';
 
 router.get('/my-bookings', authenticateJWT, async (req: any, res) => {
   try {
@@ -264,7 +265,8 @@ router.get('/', authenticateJWT, authorizeAdmin, async (req, res) => {
         include: {
           user: true,
           event: true,
-          items: { include: { ticket: true } }
+          items: { include: { ticket: true } },
+          invoiceNumber: true,
         },
         skip,
         take,
@@ -273,9 +275,25 @@ router.get('/', authenticateJWT, authorizeAdmin, async (req, res) => {
       prisma.booking.count({ where: whereClause })
     ]);
 
+    // Matches old's real behavior (MatukioHelperBasic::getInvoiceImage(),
+    // called once per row the admin bookings template actually renders):
+    // viewing this list lazily assigns a real sequential invoice number to
+    // any visible booking on a paid event that doesn't have one yet. Run
+    // sequentially (not Promise.all) so two still-unnumbered bookings on
+    // the same page, same year, can never read the same "last number"
+    // before either has committed its own.
+    const bookingsWithInvoice: any[] = [];
+    for (const b of bookings) {
+      let inv: { number: number; year: number } | null = b.invoiceNumber;
+      if (!inv && (b.event.feePerPerson ?? 0) > 0) {
+        inv = await getOrCreateInvoiceNumber(b.id);
+      }
+      bookingsWithInvoice.push({ ...b, invoiceNumber: formatInvoiceNumber(inv) });
+    }
+
     res.set('Content-Range', `bookings ${skip}-${skip + bookings.length}/${total}`);
     res.set('Access-Control-Expose-Headers', 'Content-Range');
-    res.json(bookings.map(serializeBookingForList));
+    res.json(bookingsWithInvoice.map(serializeBookingForList));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });

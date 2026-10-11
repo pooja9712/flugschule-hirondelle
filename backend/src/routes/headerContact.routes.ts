@@ -4,7 +4,7 @@ import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware'
 
 const router = Router();
 
-async function getOrCreateConfig() {
+export async function getOrCreateConfig() {
   let config = await prisma.headerContactInfo.findUnique({ where: { id: 'default' } });
   if (!config) {
     config = await prisma.headerContactInfo.create({ data: { id: 'default' } });

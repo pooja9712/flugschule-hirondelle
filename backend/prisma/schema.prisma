@@ -233,6 +233,7 @@ model Booking {
   event           Event         @relation(fields: [eventId], references: [id])
   user            User?         @relation(fields: [userId], references: [id])
   items           BookingItem[]
+  invoiceNumber   InvoiceNumber?
 }
 
 model BookingItem {
@@ -1236,5 +1237,27 @@ model HeaderContactInfo {
   phone        String   @default("+49 6201 12345")
   email        String   @default("info@flugschule-hirondelle.de")
   updatedAt    DateTime @updatedAt
+}
+
+// Old Matukio's hiron_matukio_invoice_number (MatukioHelperInvoice::
+// getInvoiceNumber(), invoice.php): a real, legally-sequential invoice
+// number ("number/year", e.g. "247/2026") assigned once per booking and
+// never recalculated after that. 6,734 real historical rows (2013-2026)
+// were migrated here exactly as old had them (matched via
+// Booking.customerDetails.oldBookingId, see
+// backfill_invoice_numbers_2026-10-11.ts) - this table is NOT reseeded
+// from scratch; new bookings get the next number for their creation year
+// lazily assigned the first time an admin views the bookings list or an
+// invoice PDF is generated (see getOrCreateInvoiceNumber in
+// utils/invoiceNumber.ts), continuing the real historical sequence.
+model InvoiceNumber {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  year      Int
+  number    Int
+  createdAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+
+  @@index([year, number])
 }
 

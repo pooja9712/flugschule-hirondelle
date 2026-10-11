@@ -379,6 +379,7 @@ export const BookingList = () => (
                     <NumberField source="bookedSeats" label="Plätze" sortable={false} />
                     <PaidToggle source="paid" label="Bezahlt" />
                     <BooleanField source="certificated" label="Zertifikat" />
+                    <FunctionField label="Rechnung" sortable={false} render={(r: any) => <InvoiceCell record={r} />} />
                     <StatusChip source="status" label="Status" />
                     <NumberField source="totalPrice" label="Gesamtpreis (€)" options={{ style: 'currency', currency: 'EUR' }} sx={{ whiteSpace: 'nowrap' }} />
                     <ShowButton />
@@ -388,6 +389,44 @@ export const BookingList = () => (
         </Box>
     </List>
 );
+
+// Old's real admin bookings list "Invoice" column (MatukioHelperBasic::
+// getInvoiceImage()): the real sequential number ("247/2026") next to a
+// download link, shown only for bookings on a paid event - a dash for free
+// events, matching old exactly (see utils/invoiceNumber.ts on the backend
+// for the full skip-rule/numbering logic this `invoiceNumber` field comes
+// from already pre-resolved on each list row).
+const InvoiceCell = ({ record }: { record: any }) => {
+    const notify = useNotify();
+    const [downloading, setDownloading] = useState(false);
+    if (!record.invoiceNumber) return <span style={{ color: '#999' }}>—</span>;
+    const download = () => {
+        setDownloading(true);
+        fetch(`/api/bookings/${record.id}/invoice`, { headers: authHeaders() })
+            .then(async (res) => {
+                if (!res.ok) throw new Error('Download fehlgeschlagen');
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Rechnung_${String(record.invoiceNumber).replace('/', '-')}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            })
+            .catch(() => notify('Fehler beim Herunterladen der Rechnung', { type: 'error' }))
+            .finally(() => setDownloading(false));
+    };
+    return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+            <span>{record.invoiceNumber}</span>
+            <IconButton size="small" onClick={download} disabled={downloading} title="Rechnung herunterladen">
+                <DownloadIcon fontSize="small" />
+            </IconButton>
+        </Box>
+    );
+};
 
 const BookingShowActions = () => (
     <TopToolbar>

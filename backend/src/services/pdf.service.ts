@@ -5,6 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import { resolveBookingCustomer } from '../utils/bookingCustomer';
 import { buildBookingPlaceholders, renderMatTokens, htmlTemplateToLines } from '../utils/matukioTemplates';
+import { getOrCreateInvoiceNumber, formatInvoiceNumber } from '../utils/invoiceNumber';
+import { getOrCreateConfig as getOrCreateHeaderContactInfo } from '../routes/headerContact.routes';
 
 const uploadsDir = path.join(__dirname, '../../uploads');
 
@@ -20,6 +22,19 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
 
   if (!booking) throw new Error('Booking not found');
 
+  // Real, legally-sequential invoice number (old Matukio's own numbering,
+  // migrated + continued - see utils/invoiceNumber.ts) instead of a slice
+  // of the booking's own UUID, which was never a real invoice number at
+  // all. The "Datum" field below is deliberately NOT this invoice's own
+  // issue date - old's real template's MAT_DATE token
+  // (MatukioHelperTemplates::getReplaces(), templates.php:105) is
+  // literally "today" at print time (`JHTML::_('date', '', ...)` with an
+  // empty date argument), so re-printing an old invoice years later always
+  // showed that day's date, not a frozen one - matched here faithfully
+  // rather than "corrected" to a fixed date.
+  const invoiceNumber = await getOrCreateInvoiceNumber(booking.id);
+  const contactInfo = await getOrCreateHeaderContactInfo();
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
     const buffers: Buffer[] = [];
@@ -33,10 +48,9 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
 
     // Company Details
     doc.fontSize(10)
-      .text('Flugschule Hirondelle', 50, 50)
-      .text('Musterstraße 123', 50, 65)
-      .text('12345 Musterstadt', 50, 80)
-      .text('Deutschland', 50, 95);
+      .text(contactInfo.siteName, 50, 50)
+      .text(contactInfo.addressLine1, 50, 65)
+      .text(contactInfo.addressLine2, 50, 80);
 
     doc.moveDown(3);
 
@@ -51,7 +65,9 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
 
     doc.moveDown(2);
 
-    doc.fontSize(12).text(`Rechnungsnummer: RE-${booking.id.split('-')[0].toUpperCase()}`, { align: 'right' });
+    if (invoiceNumber) {
+      doc.fontSize(12).text(`Rechnungsnummer: ${formatInvoiceNumber(invoiceNumber)}`, { align: 'right' });
+    }
     doc.text(`Buchungsnummer: ${booking.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`, { align: 'right' });
     doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, { align: 'right' });
     if (booking.paymentMethod) doc.text(`Zahlungsmethode: ${booking.paymentMethod}`, { align: 'right' });
