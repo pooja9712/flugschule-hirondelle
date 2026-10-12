@@ -167,29 +167,45 @@ export const TemplatesBuilder = () => {
                                         <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>Template für die Unterschriftsliste</Typography>
                                     </Box>
                                     <Box sx={{ p: 3 }}>
-                                        <TextInput 
-                                            source="listViews.signatureList" 
-                                            label="HTML / Platzhalter" 
-                                            multiline 
-                                            fullWidth 
-                                            minRows={10} 
-                                            sx={{ fontFamily: 'monospace' }} 
+                                        <TextInput
+                                            source="listViews.signatureListHeader"
+                                            label="Kopfbereich (einmal pro Veranstaltung)"
+                                            multiline
+                                            fullWidth
+                                            minRows={5}
+                                            sx={{ fontFamily: 'monospace', mb: 2 }}
+                                        />
+                                        <TextInput
+                                            source="listViews.signatureListRow"
+                                            label="Zeile (einmal pro Buchung)"
+                                            multiline
+                                            fullWidth
+                                            minRows={3}
+                                            sx={{ fontFamily: 'monospace' }}
                                         />
                                     </Box>
                                 </Paper>
-                                
+
                                 <Paper variant="outlined" sx={{ mb: 4, overflow: 'hidden' }}>
                                     <Box sx={{ bgcolor: '#1e293b', color: 'white', p: 1.5 }}>
                                         <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>Teilnehmerliste</Typography>
                                     </Box>
                                     <Box sx={{ p: 3 }}>
-                                        <TextInput 
-                                            source="listViews.participantList" 
-                                            label="HTML / Platzhalter" 
-                                            multiline 
-                                            fullWidth 
-                                            minRows={10} 
-                                            sx={{ fontFamily: 'monospace' }} 
+                                        <TextInput
+                                            source="listViews.participantListHeader"
+                                            label="Kopfbereich (einmal pro Veranstaltung)"
+                                            multiline
+                                            fullWidth
+                                            minRows={5}
+                                            sx={{ fontFamily: 'monospace', mb: 2 }}
+                                        />
+                                        <TextInput
+                                            source="listViews.participantListRow"
+                                            label="Zeile (einmal pro Buchung)"
+                                            multiline
+                                            fullWidth
+                                            minRows={8}
+                                            sx={{ fontFamily: 'monospace' }}
                                         />
                                     </Box>
                                 </Paper>
@@ -201,12 +217,12 @@ export const TemplatesBuilder = () => {
                                         <Typography variant="subtitle2" align="center">Tipps für die Unterschrift-Liste</Typography>
                                     </Box>
                                     <Box sx={{ p: 2, bgcolor: '#f8fafc', fontSize: '0.875rem' }}>
-                                        <Typography variant="body2" sx={{ mb: 2 }}>Verwenden Sie z.B. <code>##COM_MATUKIO_SIGNATURE_LIST##</code> für den Hauptinhalt.</Typography>
+                                        <Typography variant="body2" sx={{ mb: 2 }}>Der <strong>Kopfbereich</strong> wird einmal oben auf der Seite angezeigt (Infos zur Veranstaltung), die <strong>Zeile</strong> wird einmal pro Buchung wiederholt.</Typography>
                                         <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                                            <li><code>MAT_EVENT_NUMBER</code>: Event-Nummer</li>
-                                            <li><code>MAT_EVENT_TITLE</code>: Event-Titel</li>
-                                            <li><code>MAT_EVENT_BEGIN</code>: Beginn</li>
-                                            <li><code>MAT_EVENT_END</code>: Ende</li>
+                                            <li><code>MAT_EVENT_NUMBER</code>, <code>MAT_EVENT_TITLE</code>, <code>MAT_EVENT_BEGIN</code>, <code>MAT_EVENT_END</code>, <code>MAT_EVENT_FEES</code>: nur im Kopfbereich</li>
+                                            <li><code>MAT_NR</code>: laufende Nummer der Zeile</li>
+                                            <li><code>MAT_BOOKING_NUMBER</code>, <code>MAT_BOOKING_FIRSTNAME</code>, <code>MAT_BOOKING_LASTNAME</code>: Buchungsdaten</li>
+                                            <li><code>MAT_SIGN</code>: leere Unterschriftsfläche</li>
                                         </ul>
                                     </Box>
                                 </Paper>
@@ -216,11 +232,16 @@ export const TemplatesBuilder = () => {
                                         <Typography variant="subtitle2" align="center">Tipps für die Teilnehmer-Liste</Typography>
                                     </Box>
                                     <Box sx={{ p: 2, bgcolor: '#f8fafc', fontSize: '0.875rem' }}>
-                                        <Typography variant="body2" sx={{ mb: 2 }}>Verwenden Sie z.B. <code>##COM_MATUKIO_PARTICIPANTS_LIST##</code> für den Hauptinhalt.</Typography>
+                                        <Typography variant="body2" sx={{ mb: 2 }}>Der <strong>Kopfbereich</strong> wird einmal oben auf der Seite angezeigt (Infos zur Veranstaltung), die <strong>Zeile</strong> wird einmal pro Buchung wiederholt.</Typography>
                                         <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                            <li><code>MAT_EVENT_NUMBER</code>, <code>MAT_EVENT_TITLE</code>, <code>MAT_EVENT_BEGIN</code>, <code>MAT_EVENT_END</code>, <code>MAT_EVENT_FEES</code>: nur im Kopfbereich</li>
                                             <li><code>MAT_BOOKING_NAME</code>: Name</li>
                                             <li><code>MAT_BOOKING_EMAIL</code>: E-Mail</li>
+                                            <li><code>MAT_BOOKING_NUMBER</code>: Buchungsnummer</li>
                                             <li><code>MAT_BOOKING_STATUS</code>: Status</li>
+                                            <li><code>MAT_BOOKING_BOOKEDNR</code>: Gebuchte Plätze</li>
+                                            <li><code>MAT_BOOKING_FEES_STATUS</code>: Gebühren + Bezahlstatus</li>
+                                            <li><code>MAT_BOOKING_QRCODE_ID</code>: echter QR-Code (Check-in)</li>
                                         </ul>
                                     </Box>
                                 </Paper>

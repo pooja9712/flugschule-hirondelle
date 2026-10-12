@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { prisma } from '../utils/prisma';
 import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware';
 import { DEFAULT_BOOKING_CONFIRMATION_TEMPLATE } from '../services/mailer.service';
+import {
+  DEFAULT_SIGNATURE_LIST_HEADER, DEFAULT_SIGNATURE_LIST_ROW, DEFAULT_PARTICIPANT_LIST_HEADER, DEFAULT_PARTICIPANT_LIST_ROW,
+} from '../utils/matukioTemplates';
 
 const router = Router();
 
@@ -64,8 +67,10 @@ router.get('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
           id,
           emails: defaultEmails,
           listViews: {
-            signatureList: 'Unterschriftsliste\n\nNr.: MAT_EVENT_NUMBER\nVeranstaltung: MAT_EVENT_TITLE\nBeginn: MAT_EVENT_BEGIN\nEnde: MAT_EVENT_END\nGebühren: MAT_EVENT_FEES\n\nMAT_NR MAT_BOOKING_NUMBER MAT_BOOKING_FIRSTNAME MAT_BOOKING_LASTNAME MAT_SIGN',
-            participantList: 'Teilnehmerliste\n\nNr.: MAT_EVENT_NUMBER\nAnrede: MAT_EVENT_TITLE\nBeginn: MAT_EVENT_BEGIN\nEnde: MAT_EVENT_END\nGebühren: MAT_EVENT_FEES\n\nName: MAT_BOOKING_NAME\nE-Mail: MAT_BOOKING_EMAIL\nBuchungsnummer: MAT_BOOKING_NUMBER\nStatus: MAT_BOOKING_STATUS\nGebuchte Plätze: MAT_BOOKING_BOOKEDNR\nGebühren: MAT_BOOKING_FEES_STATUS\nMAT_BOOKING_QRCODE_ID'
+            signatureListHeader: DEFAULT_SIGNATURE_LIST_HEADER,
+            signatureListRow: DEFAULT_SIGNATURE_LIST_ROW,
+            participantListHeader: DEFAULT_PARTICIPANT_LIST_HEADER,
+            participantListRow: DEFAULT_PARTICIPANT_LIST_ROW,
           },
           invoices: {
             pdfTemplate: '<table width="100%"><tr><td>Your Company<br>Your Company Address<br>Your Tax Number</td><td align="right">Your Logo</td></tr></table><br><br><table width="100%"><tr><td><b>Customer Information</b><br>MAT_BOOKING_NAME<br>MAT_BOOKING_STREET<br>MAT_BOOKING_ZIP MAT_BOOKING_CITY<br>MAT_BOOKING_COUNTRY</td><td><b>Invoice Information</b><br>Invoice Number: MAT_INVOICE_NUMBER<br>Invoice Date: MAT_INVOICE_DATE<br>Booking Number: MAT_BOOKING_NUMBER<br>Payment method: MAT_BOOKING_PAYMENT_METHOD</td></tr></table><br><br><table width="100%" border="1"><tr><th>#</th><th>Event</th><th>Net total</th></tr><tr><td>MAT_BOOKING_NRBOOKED</td><td>MAT_EVENT_TITLE</td><td>MAT_BOOKING_PAYMENT_NETTO</td></tr></table><br><div align="right">Net total: MAT_BOOKING_PAYMENT_NETTO<br>Tax total: MAT_BOOKING_PAYMENT_TAX<br><b>Total: MAT_BOOKING_PAYMENT_BRUTTO</b></div><br><br><b>Invoice Note</b><br>Your notes',

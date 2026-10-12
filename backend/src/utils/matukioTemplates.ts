@@ -26,10 +26,63 @@ function matukioDate(d: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Old Matukio's own real booking-status labels (administrator/components/
+// com_matukio/helpers/booking.php's getBookingStatusName(), cross-checked
+// against actual language strings) - COMPLETED here stands in for old's
+// DELETED status, per the same mapping migrate_old_data.ts already uses.
+// Single source of truth shared with bookings.routes.ts's CSV export.
+export const OLD_STYLE_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Schwebend',
+  CONFIRMED: 'Teilnahme gesichert',
+  WAITLIST: 'Buchung auf Warteliste',
+  COMPLETED: 'Gelöscht',
+};
+
+// Old's real export_signaturelist/export_participantslist templates
+// (hiron_matukio_templates id=5/6, verified against the restored
+// production DB) are each TWO separate pieces - a header printed once
+// (value_text, the event's own info) and a row template repeated once per
+// booking (value) - not one flat block. This app's admin-editable
+// listViews.* config mirrors that split (...Header/...Row), rendered
+// through the real MAT_* token engine instead of being dumped as literal
+// unsubstituted text alongside a separate hardcoded table. Shared source
+// of truth for both the seeded admin-editable default
+// (templatesConfig.routes.ts) and bookings.routes.ts's own fallback.
+export const DEFAULT_SIGNATURE_LIST_HEADER = `<table class="mat-header-table"><tbody>
+<tr><td style="width:160px"><strong>Nr.:</strong></td><td>MAT_EVENT_NUMBER</td></tr>
+<tr><td><strong>Veranstaltung:</strong></td><td>MAT_EVENT_TITLE</td></tr>
+<tr><td><strong>Beginn:</strong></td><td>MAT_EVENT_BEGIN</td></tr>
+<tr><td><strong>Ende:</strong></td><td>MAT_EVENT_END</td></tr>
+<tr><td><strong>Gebühren:</strong></td><td>MAT_EVENT_FEES</td></tr>
+</tbody></table>`;
+
+export const DEFAULT_SIGNATURE_LIST_ROW = `<p>MAT_NR. MAT_BOOKING_NUMBER &nbsp; MAT_BOOKING_FIRSTNAME MAT_BOOKING_LASTNAME &nbsp; MAT_SIGN</p>`;
+
+// Participant list's real header uses "Anrede" ("salutation") as the label
+// for the event title row - a genuine mismatched/reused translation key in
+// old's own real template, not a mistake to silently "fix" here.
+export const DEFAULT_PARTICIPANT_LIST_HEADER = `<table class="mat-header-table"><tbody>
+<tr><td style="width:160px"><strong>Nr.:</strong></td><td>MAT_EVENT_NUMBER</td></tr>
+<tr><td><strong>Anrede:</strong></td><td>MAT_EVENT_TITLE</td></tr>
+<tr><td><strong>Beginn:</strong></td><td>MAT_EVENT_BEGIN</td></tr>
+<tr><td><strong>Ende:</strong></td><td>MAT_EVENT_END</td></tr>
+<tr><td><strong>Gebühren:</strong></td><td>MAT_EVENT_FEES</td></tr>
+</tbody></table>`;
+
+export const DEFAULT_PARTICIPANT_LIST_ROW = `<table class="mat-row-table"><tbody>
+<tr><td style="width:160px"><strong>Name:</strong></td><td>MAT_BOOKING_NAME</td></tr>
+<tr><td><strong>E-Mail:</strong></td><td>MAT_BOOKING_EMAIL</td></tr>
+<tr><td><strong>Buchungsnummer:</strong></td><td>MAT_BOOKING_NUMBER</td></tr>
+<tr><td><strong>Status:</strong></td><td>MAT_BOOKING_STATUS</td></tr>
+<tr><td><strong>Gebuchte Plätze:</strong></td><td>MAT_BOOKING_BOOKEDNR</td></tr>
+<tr><td><strong>Gebühren:</strong></td><td>MAT_BOOKING_FEES_STATUS</td></tr>
+<tr><td colspan="2" style="text-align:center">MAT_BOOKING_QRCODE_ID</td></tr>
+</tbody></table>`;
+
 // Bare MAT_* token substitution, matching the exact convention documented in
 // the admin's TemplatesBuilder (listViews/certificates/tickets/csvXml tabs) -
 // no curly braces, unlike the {TOKEN} style used by the simpler emails.* templates.
-export function buildBookingPlaceholders(booking: any): Record<string, string> {
+export function buildBookingPlaceholders(booking: any, nr?: number): Record<string, string> {
   const { name, email } = resolveBookingCustomer(booking);
   const details = (booking.customerDetails as any) || {};
   const seats = (booking.items || []).reduce((s: number, i: any) => s + i.quantity, 0);
@@ -54,7 +107,7 @@ export function buildBookingPlaceholders(booking: any): Record<string, string> {
   return {
     MAT_BOOKING_NAME: name,
     MAT_BOOKING_EMAIL: email || '',
-    MAT_BOOKING_STATUS: booking.status,
+    MAT_BOOKING_STATUS: OLD_STYLE_STATUS_LABEL[booking.status] || booking.status,
     // Old's real payment_status column (always 'P' - see the CSV export
     // fix's own comment on this exact same historical constant).
     MAT_BOOKING_PAYMENT_STATUS: 'P',
@@ -103,11 +156,22 @@ export function buildBookingPlaceholders(booking: any): Record<string, string> {
     // never real data, matching old's own use (a signature can't be
     // pre-filled).
     MAT_SIGN: '',
-    // MAT_NR (a per-row running number) and MAT_BOOKING_QRCODE_ID/
-    // MAT_BOOKING_CHECKIN_QRCODE (real QR code images) aren't resolvable
-    // from a single booking's own data in isolation - the former needs the
-    // caller's own loop index, the latter needs real QR generation. Left
-    // unresolved here on purpose; not silently guessed at.
+    // Old's real events.php:403-410 - gated on the EVENT's own base fee
+    // (not the booking's totalPrice, and not the payment_brutto>0 gate
+    // used elsewhere) - a free event always shows "Kostenlos" regardless
+    // of what any individual booking ended up costing after a voucher.
+    MAT_BOOKING_FEES_STATUS: (booking.event?.feePerPerson ?? 0) > 0
+      ? `${matukioCurrency(Number(booking.totalPrice ?? 0))} (${booking.paid ? 'Bezahlt' : 'Nicht bezahlt'})`
+      : 'Kostenlos',
+    // Old's real per-row running number (MatukioHelperTemplates::
+    // getReplaces($event, $booking, $nr, ...) - the caller's own loop
+    // index), used by the signature list's "Nr." column.
+    MAT_NR: nr != null ? String(nr) : '',
+    // MAT_BOOKING_QRCODE_ID/MAT_BOOKING_CHECKIN_QRCODE (real QR code
+    // images) need actual QR generation (async, via the `qrcode` package)
+    // - left unresolved here; callers that need it override this key with
+    // a real <img> tag after calling this function (see bookings.routes.ts
+    // export/participant-list, pdf.service.ts's ticket QR).
   };
 }
 

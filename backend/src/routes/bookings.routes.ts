@@ -9,7 +9,12 @@ import { JWT_SECRET } from '../utils/config';
 import jwt from 'jsonwebtoken';
 import { resolveBookingCustomer } from '../utils/bookingCustomer';
 import { getNewsletterTransporter } from '../utils/newsletterTransporter';
-import { buildBookingPlaceholders, renderMatTokens, parseCsvTemplateTokens, friendlyColumnName, htmlTemplateToLines, matukioBookingNumber } from '../utils/matukioTemplates';
+import {
+  buildBookingPlaceholders, renderMatTokens, parseCsvTemplateTokens, friendlyColumnName, htmlTemplateToLines,
+  matukioBookingNumber, OLD_STYLE_STATUS_LABEL,
+  DEFAULT_SIGNATURE_LIST_HEADER, DEFAULT_SIGNATURE_LIST_ROW, DEFAULT_PARTICIPANT_LIST_HEADER, DEFAULT_PARTICIPANT_LIST_ROW,
+} from '../utils/matukioTemplates';
+import QRCode from 'qrcode';
 import { escapeHtml } from '../utils/htmlEscape';
 import { csvEscape } from '../utils/csvEscape';
 import { publicLookupRateLimit } from '../middlewares/rateLimit.middleware';
@@ -537,17 +542,6 @@ router.put('/:id/paid', authenticateJWT, authorizeAdmin, async (req, res) => {
 
 // --- Exports / print views ---
 
-// Old Matukio's real booking-status labels (administrator/components/
-// com_matukio/helpers/booking.php's getBookingStatusName(), cross-checked
-// against actual language strings) - COMPLETED here stands in for old's
-// DELETED status, per the same mapping migrate_old_data.ts already uses.
-const OLD_STYLE_STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Schwebend',
-  CONFIRMED: 'Teilnahme gesichert',
-  WAITLIST: 'Buchung auf Warteliste',
-  COMPLETED: 'Gelöscht',
-};
-
 // Old Matukio's own CSV export literally emitted the "&euro;" HTML entity
 // and a whole <table> of <tr><td> markup for the extras column (a bug in
 // the old system, not a deliberate format) - byte-for-byte-replicating
@@ -677,61 +671,63 @@ router.get('/export/csv', authenticateJWT, authorizeAdmin, async (req, res) => {
   }
 });
 
-function renderPrintList(title: string, bookings: any[], withSignatureColumn: boolean, tableOnly = false) {
-  const rows = bookings.map((b) => {
-    const { name, email } = resolveBookingCustomer(b);
-    const seats = b.items.reduce((s: number, i: any) => s + i.quantity, 0);
-    return `
-      <tr>
-        <td>${escapeHtml(name)}</td>
-        <td>${escapeHtml(email || '')}</td>
-        <td>${escapeHtml(b.event.title)}</td>
-        <td>${new Date(b.event.startDate).toLocaleDateString('de-DE')}</td>
-        <td>${seats}</td>
-        ${withSignatureColumn ? '<td class="sig-cell"></td>' : ''}
-      </tr>`;
-  }).join('');
-
-  const table = `
-  <style>
-    table.mat-print-list { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    table.mat-print-list th, table.mat-print-list td { border: 1px solid #999; padding: 6px 10px; text-align: left; font-size: 13px; }
-    table.mat-print-list .sig-cell { width: 160px; }
-  </style>
-  <table class="mat-print-list">
-    <thead><tr><th>Name</th><th>E-Mail</th><th>Event</th><th>Datum</th><th>Plätze</th>${withSignatureColumn ? '<th>Unterschrift</th>' : ''}</tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-
-  if (tableOnly) return table;
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${title}</title>
-<style>
+const PRINT_LIST_PAGE_STYLE = `
   body { font-family: Arial, sans-serif; margin: 24px; }
   h1 { font-size: 18px; }
+  table.mat-header-table { margin-bottom: 20px; }
+  table.mat-header-table td, table.mat-row-table td { padding: 3px 8px; vertical-align: top; }
+  table.mat-row-table { border: 1px solid #999; border-collapse: collapse; width: 100%; margin-bottom: 14px; }
+  table.mat-row-table td { border: 1px solid #ccc; }
   @media print { body { margin: 0; } }
-</style>
-</head><body>
-  <h1>${title}</h1>
-  ${table}
-  <script>window.onload = () => window.print();</script>
-</body></html>`;
+`;
+
+// Old's real MatukioHelperBooking::getBookingIdQRCode() - a 150x150 PNG QR
+// code encoding the booking's own number (not a URL), with that same
+// number printed in bold underneath.
+async function bookingQrCodeHtml(bookingId: string): Promise<string> {
+  const number = matukioBookingNumber(bookingId);
+  const dataUrl = await QRCode.toDataURL(number, { margin: 1, width: 150 });
+  return `<img src="${dataUrl}" width="150" height="150" /><br/><code><b>${number}</b></code>`;
 }
 
-// If the admin configured a template (Vorlagen > Listen-Ansichten), it's a
-// full-page HTML document with a ##COM_MATUKIO_..._LIST## marker showing
-// where the generated table should be inserted - giving the admin control
-// over branding/styling/print layout while the row data itself stays
-// reliable/consistent. Falls back to the built-in fixed layout if no
-// template is set, or the marker isn't present in it.
-function renderWithTemplate(template: string | undefined, marker: string, title: string, bookings: any[], withSignatureColumn: boolean) {
-  const generatedTable = renderPrintList(title, bookings, withSignatureColumn, true);
-  if (template && template.trim()) {
-    const withTable = template.includes(marker) ? template.replace(marker, generatedTable) : template + generatedTable;
-    return withTable.includes('<html') ? withTable : `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${withTable}<script>window.onload=()=>window.print();</script></body></html>`;
+// Renders old's real two-part (header once + row repeated per booking)
+// print-list structure through the MAT_* token engine. The header uses the
+// FIRST booking's event - matches old's own real behavior closely (old's
+// header is populated from a single explicit event_id when the admin
+// prints one event's list at a time, which is this feature's actual use;
+// an ad-hoc cross-event selection is a degenerate case old handled no
+// better).
+async function renderPrintListDocument(
+  title: string,
+  bookings: any[],
+  headerTemplate: string,
+  rowTemplate: string,
+  withQrCode: boolean
+): Promise<string> {
+  const headerHtml = bookings.length
+    ? renderMatTokens(headerTemplate, buildBookingPlaceholders(bookings[0]))
+    : '';
+
+  const rows: string[] = [];
+  let nr = 1;
+  for (const b of bookings) {
+    const placeholders = buildBookingPlaceholders(b, nr);
+    if (withQrCode) {
+      placeholders.MAT_BOOKING_QRCODE_ID = await bookingQrCodeHtml(b.id);
+    }
+    rows.push(renderMatTokens(rowTemplate, placeholders));
+    nr++;
   }
-  return renderPrintList(title, bookings, withSignatureColumn, false);
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<style>${PRINT_LIST_PAGE_STYLE}</style>
+</head><body>
+  <h1>${escapeHtml(title)}</h1>
+  ${headerHtml}
+  ${rows.join('')}
+  <script>window.onload = () => window.print();</script>
+</body></html>`;
 }
 
 router.get('/export/participant-list', authenticateJWT, authorizeAdmin, async (req, res) => {
@@ -743,8 +739,10 @@ router.get('/export/participant-list', authenticateJWT, authorizeAdmin, async (r
       orderBy: { createdAt: 'desc' },
     });
     const templatesConfig = await prisma.templatesConfig.findUnique({ where: { id: 'default' } });
-    const template = (templatesConfig?.listViews as any)?.participantList as string | undefined;
-    res.send(renderWithTemplate(template, '##COM_MATUKIO_PARTICIPANTS_LIST##', 'Teilnehmerliste', bookings, false));
+    const listViews = (templatesConfig?.listViews as any) || {};
+    const header = listViews.participantListHeader || DEFAULT_PARTICIPANT_LIST_HEADER;
+    const row = listViews.participantListRow || DEFAULT_PARTICIPANT_LIST_ROW;
+    res.send(await renderPrintListDocument('Teilnehmerliste', bookings, header, row, true));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });
@@ -760,8 +758,10 @@ router.get('/export/signature-list', authenticateJWT, authorizeAdmin, async (req
       orderBy: { createdAt: 'desc' },
     });
     const templatesConfig = await prisma.templatesConfig.findUnique({ where: { id: 'default' } });
-    const template = (templatesConfig?.listViews as any)?.signatureList as string | undefined;
-    res.send(renderWithTemplate(template, '##COM_MATUKIO_SIGNATURE_LIST##', 'Unterschriftenliste', bookings, true));
+    const listViews = (templatesConfig?.listViews as any) || {};
+    const header = listViews.signatureListHeader || DEFAULT_SIGNATURE_LIST_HEADER;
+    const row = listViews.signatureListRow || DEFAULT_SIGNATURE_LIST_ROW;
+    res.send(await renderPrintListDocument('Unterschriftenliste', bookings, header, row, false));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });
