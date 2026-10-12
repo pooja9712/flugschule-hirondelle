@@ -681,7 +681,7 @@ export const MenuManager = () => {
         <Typography variant="body2" sx={{ flex: 1, color: dirty ? '#8a6d1f' : '#557a5e' }}>
           {dirty
             ? (location === 'header' ? 'Das Hauptmenü hat ungespeicherte Änderungen - auf der Webseite ist noch der zuletzt veröffentlichte Stand zu sehen.' : 'Der Footer hat ungespeicherte Änderungen - auf der Webseite ist noch der zuletzt veröffentlichte Stand zu sehen.')
-            : (publishedAt ? `Veröffentlicht - zuletzt am ${new Date(publishedAt).toLocaleString('de-DE')}.` : 'Noch nichts veröffentlicht.')}
+            : (publishedAt ? 'Veröffentlicht.' : 'Noch nichts veröffentlicht.')}
         </Typography>
         <Button
           variant="contained"
@@ -875,8 +875,10 @@ export const MenuManager = () => {
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.label}</Typography>
                 <Typography variant="body2" sx={{ color: '#666' }}>
-                  {item.url || '—'}
-                  {location === 'header' && item.subItems.length > 0 && ` · ${item.subItems.length} Untermenüpunkt${item.subItems.length === 1 ? '' : 'e'}`}
+                  <span>{item.url || '—'}</span>
+                  {location === 'header' && item.subItems.length > 0 && (
+                    <span>{` · ${item.subItems.length} Untermenüpunkt${item.subItems.length === 1 ? '' : 'e'}`}</span>
+                  )}
                 </Typography>
               </Box>
               <FormControlLabel

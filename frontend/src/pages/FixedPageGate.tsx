@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Banner, BannerPositionContext } from '../components/common/Banner';
+import { PageArticleOverride } from './PageArticleOverride'; // PAGE ARTICLE MODE
 
 interface PageSettings {
   slug: string | null;
@@ -57,8 +58,12 @@ export const FixedPageGate = ({
   // that belongs to a different page.
   const settings = fetched?.kind === kind ? fetched.settings : undefined;
 
+  // PAGE ARTICLE MODE: `page` = the normal page, or its Joomla-style article
+  // body if an admin enabled one. To revert, use `children` directly again.
+  const page = <PageArticleOverride articleKey={kind}>{children}</PageArticleOverride>;
+
   if (settings === undefined || settings === null) {
-    return <BannerPositionContext.Provider value={kind}>{children}</BannerPositionContext.Provider>;
+    return <BannerPositionContext.Provider value={kind}>{page}</BannerPositionContext.Provider>;
   }
 
   if (settings.status === 'draft') {
@@ -78,5 +83,5 @@ export const FixedPageGate = ({
     return <Navigate to={`/${settings.slug}`} replace />;
   }
 
-  return <BannerPositionContext.Provider value={kind}>{children}</BannerPositionContext.Provider>;
+  return <BannerPositionContext.Provider value={kind}>{page}</BannerPositionContext.Provider>;
 };

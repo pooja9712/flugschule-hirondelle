@@ -629,7 +629,11 @@ body.admin-root .RaBulkActionsToolbar-root {
   border-top: 1px solid #e5e7eb;
   margin: 2.5rem 0;
 }
-.home-body-content img {
+/* Only plain article images (no class of their own, e.g. inserted via the
+   editor's image button). Images that carry layout classes - like the round
+   logo inside the promo cards - keep their own sizing; without :not([class])
+   the margin/width here pushed that logo off-centre in its circle. */
+.home-body-content img:not([class]) {
   width: 100%;
   border-radius: 2px;
   margin-bottom: 1.5rem;

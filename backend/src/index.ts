@@ -62,6 +62,7 @@ import pagegalleryRoutes from './routes/pagegallery.routes'; // NEW - standalone
 import pagesRoutes from './routes/pages.routes'; // NEW - "Seiten" CMS: admin-created pages with their own URL
 import homeContentRoutes from './routes/homecontent.routes'; // NEW - editable data (text/images) for the hardcoded Home.tsx design
 import sitePageContentRoutes from './routes/sitePageContent.routes'; // NEW - same idea as homeContentRoutes, for Ausbildung/Performance/Reisen/Service/Infos
+import pageArticleRoutes from './routes/pageArticle.routes'; // PAGE ARTICLE MODE - Joomla-style body content (revert: remove this + the app.use line)
 import trashRoutes from './routes/trash.routes'; // NEW - WordPress-style Papierkorb (restore/permanently-delete) for pages.routes.ts, homecontent.routes.ts and sitePageContent.routes.ts deletes
 import fixedPageDuplicatesRoutes from './routes/fixedPageDuplicates.routes'; // NEW - true same-design duplicates of the 6 fixed pages (see FixedPageRouter.tsx on the frontend)
 import fixedPageSettingsRoutes from './routes/fixedPageSettings.routes'; // NEW - editable title/URL/publish-status for the 6 fixed pages themselves (see FixedPageGate.tsx on the frontend)
@@ -166,6 +167,7 @@ app.use('/api/pagegallery', pagegalleryRoutes); // NEW - standalone Galerie feat
 app.use('/api/pages', pagesRoutes); // NEW - "Seiten" CMS
 app.use('/api/homecontent', homeContentRoutes); // NEW - Home.tsx data
 app.use('/api/sitepagecontent', sitePageContentRoutes); // NEW - Ausbildung/Performance/Reisen/Service/Infos data
+app.use('/api/page-articles', pageArticleRoutes); // PAGE ARTICLE MODE - see routes/pageArticle.routes.ts
 app.use('/api/trash', trashRoutes); // NEW - Papierkorb (restore/permanently-delete)
 app.use('/api/fixed-page-duplicates', fixedPageDuplicatesRoutes); // NEW - true same-design duplicates
 app.use('/api/fixed-page-settings', fixedPageSettingsRoutes); // NEW - editable title/URL/publish-status for the 6 fixed pages themselves
