@@ -4,7 +4,7 @@ import { prisma } from '../utils/prisma';
 import fs from 'fs';
 import path from 'path';
 import { resolveBookingCustomer } from '../utils/bookingCustomer';
-import { buildBookingPlaceholders, renderMatTokens, htmlTemplateToLines, matukioBookingNumber } from '../utils/matukioTemplates';
+import { buildBookingPlaceholders, renderMatTokens, htmlTemplateToLines, matukioBookingNumber, parseHtmlBlocks, HtmlBlock } from '../utils/matukioTemplates';
 import { getOrCreateInvoiceNumber, formatInvoiceNumber } from '../utils/invoiceNumber';
 import { getOrCreateConfig as getOrCreateHeaderContactInfo } from '../routes/headerContact.routes';
 
@@ -32,6 +32,78 @@ function makePdfSafePlaceholders(placeholders: Record<string, string>): Record<s
     if (safe[key]) safe[key] = safe[key].replace(/€\s*/g, '').trim() + ' EUR';
   }
   return safe;
+}
+
+// Draws old's real HTML table structure (parseHtmlBlocks()) as an actual
+// bordered grid - PDFKit has no table primitive of its own, so each row's
+// height is measured from its tallest cell's wrapped text first, then every
+// cell in that row is drawn to that same height, keeping the grid lines
+// aligned exactly like a real <table> instead of flattening everything into
+// plain stacked text lines (htmlTemplateToLines(), still used for the
+// simpler single-column ticket/certificate/name-tag templates).
+function drawHtmlBlocks(doc: PDFKit.PDFDocument, blocks: HtmlBlock[]) {
+  const left = doc.page.margins.left;
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const lineGap = 3;
+  const cellPaddingX = 6;
+  const cellPaddingY = 5;
+  const fontSize = 10;
+
+  const lineHeight = (text: string, width: number, bold: boolean) => {
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+    return doc.heightOfString(text, { width });
+  };
+
+  for (const block of blocks) {
+    if (block.type === 'text') {
+      for (const line of block.lines) {
+        if (doc.y + lineHeight(line.text, contentWidth, line.bold) > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+        }
+        doc.font(line.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+        doc.text(line.text, left, doc.y, { width: contentWidth, align: block.align, lineGap });
+        doc.y += lineGap;
+      }
+      doc.moveDown(0.75);
+      continue;
+    }
+
+    const cols = Math.max(...block.rows.map((r) => r.length));
+    const colWidth = contentWidth / cols;
+    const innerWidth = colWidth - cellPaddingX * 2;
+
+    for (const row of block.rows) {
+      const rowHeight = Math.max(
+        20,
+        ...row.map((cell) => {
+          let h = cellPaddingY * 2;
+          for (const line of cell.lines) h += lineHeight(line.text, innerWidth, line.bold || cell.header) + lineGap;
+          return h;
+        })
+      );
+
+      if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+      }
+      const rowY = doc.y;
+
+      row.forEach((cell, i) => {
+        const cellX = left + i * colWidth;
+        if (block.bordered) {
+          doc.rect(cellX, rowY, colWidth, rowHeight).strokeColor('#999999').lineWidth(0.5).stroke();
+        }
+        let textY = rowY + cellPaddingY;
+        for (const line of cell.lines) {
+          doc.font(line.bold || cell.header ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+          doc.fillColor('black').text(line.text, cellX + cellPaddingX, textY, { width: innerWidth, align: cell.align });
+          textY += lineHeight(line.text, innerWidth, line.bold || cell.header) + lineGap;
+        }
+      });
+
+      doc.y = rowY + rowHeight;
+    }
+    doc.moveDown(0.75);
+  }
 }
 
 export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
@@ -64,13 +136,15 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
     // Admin-configurable invoice template (Vorlagen > Rechnung), seeded
     // word-for-word from old Matukio's own real invoice template
     // (hiron_matukio_templates, tmpl_name='invoice') - same MAT_* token
-    // engine already used for tickets/certificates/name tags, reduced from
-    // HTML to text lines since PDFKit draws text imperatively rather than
-    // rendering HTML/CSS (table borders/columns aren't reproduced, but the
-    // admin's exact wording, fields and token choices are). MAT_INVOICE_NUMBER
-    // is overridden with the real, legally-sequential number (old's
-    // #__matukio_invoice_number logic, migrated - see utils/invoiceNumber.ts)
-    // instead of buildBookingPlaceholders()'s generic booking-id fallback.
+    // engine already used for tickets/certificates/name tags. Unlike those
+    // (plain text lines, via htmlTemplateToLines()), this template's real
+    // tables (company header, customer/invoice info boxes, bordered items
+    // table) are drawn as an actual grid via drawHtmlBlocks()/
+    // parseHtmlBlocks() - the admin's exact wording AND its real table
+    // layout, not just the wording. MAT_INVOICE_NUMBER is overridden with
+    // the real, legally-sequential number (old's #__matukio_invoice_number
+    // logic, migrated - see utils/invoiceNumber.ts) instead of
+    // buildBookingPlaceholders()'s generic booking-id fallback.
     const placeholders = makePdfSafePlaceholders(buildBookingPlaceholders(booking));
     // Old's real print-time check (MatukioHelperTemplates::getReplaces(),
     // templates.php:337) only fills MAT_INVOICE_NUMBER in if the booking's
@@ -81,7 +155,7 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
     // rather than always showing the number whenever one exists.
     placeholders.MAT_INVOICE_NUMBER = booking.totalPrice > 0 ? (formatInvoiceNumber(invoiceNumber) || '') : '';
     const rendered = renderMatTokens(template, placeholders);
-    const lines = htmlTemplateToLines(rendered);
+    const blocks = parseHtmlBlocks(rendered);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
@@ -92,10 +166,7 @@ export async function generateInvoicePDF(bookingId: string): Promise<Buffer> {
 
       doc.fontSize(20).text('Rechnung', { align: 'right' });
       doc.moveDown();
-      doc.fontSize(10).font('Helvetica');
-      for (const line of lines) {
-        doc.text(line);
-      }
+      drawHtmlBlocks(doc, blocks);
 
       doc.end();
     });

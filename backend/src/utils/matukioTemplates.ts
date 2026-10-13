@@ -267,3 +267,100 @@ export function htmlTemplateToLines(html: string): string[] {
     .map((l) => l.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').trim())
     .filter((l) => l.length > 0);
 }
+
+export interface HtmlTextLine {
+  text: string;
+  bold: boolean;
+}
+
+export interface HtmlTableCell {
+  lines: HtmlTextLine[];
+  align: 'left' | 'right' | 'center';
+  header: boolean;
+}
+
+export type HtmlBlock =
+  | { type: 'table'; bordered: boolean; rows: HtmlTableCell[][] }
+  | { type: 'text'; lines: HtmlTextLine[]; align: 'left' | 'right' | 'center' };
+
+function decodeEntities(s: string): string {
+  return s.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>');
+}
+
+// Splits one cell/div/paragraph's inner HTML into lines on <br>, detecting
+// per-line bold (<b>/<strong>) and stripping all other tags - old's real
+// templates bold only specific lines within a cell (e.g. a "Customer
+// Information" heading line followed by plain data lines), not the whole
+// cell, so this must be tracked per line rather than per cell.
+function parseInnerLines(innerHtml: string): HtmlTextLine[] {
+  return innerHtml
+    .split(/<br\s*\/?>/gi)
+    .map((raw) => {
+      const bold = /<(b|strong)[^>]*>/i.test(raw);
+      const text = decodeEntities(raw.replace(/<[^>]+>/g, '')).trim();
+      return { text, bold };
+    })
+    .filter((l) => l.text.length > 0);
+}
+
+function parseAlign(attrs: string): 'left' | 'right' | 'center' {
+  const m = attrs.match(/align=["']?(left|right|center)["']?/i);
+  return (m?.[1].toLowerCase() as 'left' | 'right' | 'center') || 'left';
+}
+
+// Parses the small, known subset of HTML old's real Matukio templates
+// actually use (table/tr/td/th, div, br, b/strong, plain text) into a
+// sequence of renderable blocks - tables keep their real row/column
+// structure (drawn as an actual bordered grid in pdf.service.ts) instead of
+// being flattened into plain text lines like htmlTemplateToLines() does.
+export function parseHtmlBlocks(html: string): HtmlBlock[] {
+  const blocks: HtmlBlock[] = [];
+  const topLevelRe = /<table([^>]*)>([\s\S]*?)<\/table>|<div([^>]*)>([\s\S]*?)<\/div>/gi;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const flushText = (segment: string) => {
+    const lines = parseInnerLines(segment);
+    if (lines.length) blocks.push({ type: 'text', lines, align: 'left' });
+  };
+
+  while ((match = topLevelRe.exec(html))) {
+    flushText(html.slice(lastIndex, match.index));
+    lastIndex = topLevelRe.lastIndex;
+
+    if (match[1] !== undefined) {
+      // <table ...> ... </table>
+      const tableAttrs = match[1];
+      const tableInner = match[2];
+      const bordered = /border=["']?[1-9]/i.test(tableAttrs);
+      const rows: HtmlTableCell[][] = [];
+      const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      let rowMatch: RegExpExecArray | null;
+      while ((rowMatch = rowRe.exec(tableInner))) {
+        const cells: HtmlTableCell[] = [];
+        const cellRe = /<(td|th)([^>]*)>([\s\S]*?)<\/\1>/gi;
+        let cellMatch: RegExpExecArray | null;
+        while ((cellMatch = cellRe.exec(rowMatch[1]))) {
+          const [, tag, attrs, inner] = cellMatch;
+          cells.push({
+            lines: parseInnerLines(inner),
+            align: parseAlign(attrs),
+            header: tag.toLowerCase() === 'th',
+          });
+        }
+        if (cells.length) rows.push(cells);
+      }
+      if (rows.length) blocks.push({ type: 'table', bordered, rows });
+    } else {
+      // <div ...> ... </div>
+      const divAttrs = match[3] || '';
+      const divInner = match[4] || '';
+      const lines = parseInnerLines(divInner);
+      if (lines.length) blocks.push({ type: 'text', lines, align: parseAlign(divAttrs) });
+    }
+  }
+  flushText(html.slice(lastIndex));
+
+  return blocks;
+}
