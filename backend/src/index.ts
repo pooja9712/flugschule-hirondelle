@@ -72,6 +72,7 @@ import trackRoutes from './routes/track.routes';
 import path from 'path';
 import 'dotenv/config'; // loads .env variables
 import { raQueryParser } from './middlewares/raCompat.middleware';
+import { maintenanceGate, handleUnlockSubmit } from './middlewares/maintenanceGate.middleware';
 
 const app = express();
 const PORT = process.env.PORT || 5555;
@@ -107,6 +108,13 @@ app.use(cors({
   exposedHeaders: ['Content-Range']
 }));
 app.use(express.json());
+
+// "Coming soon" gate (Settings > maintenanceModeEnabled) - must run before
+// static/API serving but after its own unlock-form endpoint is reachable.
+// The form posts application/x-www-form-urlencoded, not JSON, hence its own
+// urlencoded parser here rather than relying on the global express.json().
+app.post('/__unlock', express.urlencoded({ extended: false }), handleUnlockSubmit);
+app.use(maintenanceGate);
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));

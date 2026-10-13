@@ -196,6 +196,26 @@ export const SettingsConfigPage = () => {
                         onChange={(e) => set('rejectionSubject')(e.target.value)}
                         helperText="Wird als Vorschlag im 'Ablehnen'-Dialog der Buchungsliste verwendet."
                     />
+
+                    <Divider sx={{ my: 3 }} />
+
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>Website im Aufbau ("Coming soon")</Typography>
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                        Solange aktiv, sehen neue Besucher auf allen öffentlichen Seiten eine Passwort-Seite statt der echten Website.
+                        Das Admin-Panel (Login) bleibt davon unberührt erreichbar.
+                    </Alert>
+                    <FormControlLabel
+                        control={<Switch checked={!!form.maintenanceModeEnabled} onChange={(e) => set('maintenanceModeEnabled')(e.target.checked)} />}
+                        label="Website für neue Besucher sperren"
+                    />
+                    <TextField
+                        label="Passwort für den Testzugang"
+                        fullWidth
+                        value={form.maintenancePassword || ''}
+                        onChange={(e) => set('maintenancePassword')(e.target.value)}
+                        helperText="Wer dieses Passwort eingibt, sieht die echte Website (im selben Browser gespeichert, 30 Tage gültig). Das Ändern des Passworts macht alle zuvor freigeschalteten Browser ungültig."
+                        sx={{ mt: 2 }}
+                    />
                 </Box>
             </CardContent>
         </Card>

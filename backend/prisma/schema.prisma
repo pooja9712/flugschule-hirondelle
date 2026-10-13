@@ -1061,6 +1061,13 @@ model SettingsConfig {
   // cron_invoice_afterevent trio (all default OFF in old's own config.xml,
   // no evidence this site ever turned them on - correctly not built here).
   emailBcc                   String?
+  // New (not from old) - a WordPress-style "Coming soon" gate: while
+  // enabled, every public-facing page shows a branded password page
+  // instead of the real site (admin and the API itself stay reachable so
+  // the team can keep testing/managing content). See
+  // middlewares/maintenanceGate.middleware.ts.
+  maintenanceModeEnabled     Boolean  @default(false)
+  maintenancePassword        String?
   updatedAt                  DateTime @updatedAt
 }
 

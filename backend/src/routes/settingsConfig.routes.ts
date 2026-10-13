@@ -28,7 +28,7 @@ router.put('/', authenticateJWT, authorizeAdmin, async (req, res) => {
       sendmailTeilnehmer, notifyParticipantsPublish, notifyParticipantsCancel, notifyParticipantsDelete,
       sendmailOwner, ownerNotificationEmail, sendmailInvoice, sendmailTicket,
       sendmailCertificate, bookingStornotage, rejectionSubject, sendmailNewEventGroup,
-      emailBcc,
+      emailBcc, maintenanceModeEnabled, maintenancePassword,
     } = req.body;
 
     const data: Record<string, any> = {};
@@ -45,6 +45,8 @@ router.put('/', authenticateJWT, authorizeAdmin, async (req, res) => {
     if (rejectionSubject !== undefined) data.rejectionSubject = rejectionSubject;
     if (sendmailNewEventGroup !== undefined) data.sendmailNewEventGroup = !!sendmailNewEventGroup;
     if (emailBcc !== undefined) data.emailBcc = emailBcc || null;
+    if (maintenanceModeEnabled !== undefined) data.maintenanceModeEnabled = !!maintenanceModeEnabled;
+    if (maintenancePassword !== undefined) data.maintenancePassword = maintenancePassword || null;
 
     const config = await prisma.settingsConfig.upsert({
       where: { id: 'default' },
