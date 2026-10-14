@@ -229,7 +229,9 @@ export const Banner = ({ variant = 'subpage', position }: BannerProps) => {
   const subpageDesktopHeight = variant === 'subpage' ? 'md:h-[466px]' : '';
 
   return (
-    <section className={`relative w-full h-[max(40vw,150px)] ${subpageDesktopHeight} flex flex-col items-center justify-center text-center text-white overflow-hidden group ${subpageDesktopOverlap}`}>
+    // data-site-banner: PAGE ARTICLE MODE - lets PageArticleEditor's "copy
+    // current page" import skip the slider (harmless otherwise).
+    <section data-site-banner className={`relative w-full h-[max(40vw,150px)] ${subpageDesktopHeight} flex flex-col items-center justify-center text-center text-white overflow-hidden group ${subpageDesktopOverlap}`}>
 
       {/* Background Images - Ken Burns effect matched to the old site's
           actual SlideshowCK params (time: 7000, transPeriod: 3000): the

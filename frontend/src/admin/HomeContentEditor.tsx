@@ -292,9 +292,10 @@ export const HomeContentEditor = () => {
               label=""
               value={content.bodyHtml}
               onChange={(html) => setContent({ ...content, bodyHtml: html })}
-              minRows={16}
-              helperText="HTML/CSS erlaubt (Testfunktion auf dieser Kopie)."
-              defaultHtmlMode
+              minRows={18}
+              helperText="Wie in Joomla: Menüleiste oben, weitere Werkzeuge über die Schaltfläche „…“. Über „HTML“ lässt sich der Quelltext direkt bearbeiten."
+              bodyClass="home-body-content"
+              contentMaxWidth={1200}
             />
           </CardContent>
         </Card>

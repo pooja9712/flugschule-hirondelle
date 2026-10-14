@@ -35,6 +35,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RestoreFromTrashIcon from '@mui/icons-material/RestoreFromTrash';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ArticleIcon from '@mui/icons-material/Article'; // PAGE ARTICLE MODE
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -1141,6 +1142,10 @@ export const PagesManager = () => {
   // its parent menu item (e.g. Schnupperkurs under Ausbildung) - purely a
   // visual cue (extra left padding + a small tree marker), the row itself
   // behaves identically either way.
+  // PAGE ARTICLE MODE - opens the Joomla-style body editor for a page.
+  const openArticleEditor = (key: string, path: string, title: string) =>
+    navigate(`/admin/page-article/${encodeURIComponent(key)}?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}`);
+
   const renderRow = (row: DisplayRow, indent = 0) => {
     const titleCellSx = { pl: indent ? 2 + indent * 3 : 2 };
     const indentMarker = indent > 0 && <Typography component="span" sx={{ color: '#bbb', mr: 1 }}>↳</Typography>;
@@ -1168,6 +1173,10 @@ export const PagesManager = () => {
             </IconButton>
             <IconButton size="small" onClick={() => navigate(page.editPath)} title="Bearbeiten">
               <EditIcon fontSize="small" />
+            </IconButton>
+            {/* PAGE ARTICLE MODE - remove this button to revert */}
+            <IconButton size="small" onClick={() => openArticleEditor(page.kind, previewPath, title)} title="Artikel-Inhalt (Joomla-Editor)">
+              <ArticleIcon fontSize="small" />
             </IconButton>
             <IconButton size="small" onClick={() => handleDuplicateFixed(page)} title="Duplizieren (erstellt eine neue Seite mit exakt dem gleichen Design/Layout)">
               <ContentCopyIcon fontSize="small" />
@@ -1209,6 +1218,10 @@ export const PagesManager = () => {
                 <EditIcon fontSize="small" />
               </IconButton>
             )}
+            {/* PAGE ARTICLE MODE - remove this button to revert */}
+            <IconButton size="small" onClick={() => openArticleEditor(dup.slug, `/${dup.slug}`, dup.title)} title="Artikel-Inhalt (Joomla-Editor)">
+              <ArticleIcon fontSize="small" />
+            </IconButton>
             <IconButton size="small" onClick={() => handleDuplicateFixedDuplicate(dup)} title="Duplizieren (erstellt eine weitere Kopie mit gleichem Design/Inhalt)">
               <ContentCopyIcon fontSize="small" />
             </IconButton>

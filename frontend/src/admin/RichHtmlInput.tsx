@@ -1,50 +1,88 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Editor } from '@tinymce/tinymce-react';
-import { Box, IconButton, TextField, Typography, Tooltip } from '@mui/material';
+import { Box, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import CodeIcon from '@mui/icons-material/Code';
-import EditIcon from '@mui/icons-material/Edit';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import { ELEMENT_CLIPBOARD_CSS, registerElementClipboard } from './editorElementClipboard';
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('auth')}` });
 
-// Standalone WYSIWYG + raw-HTML-source editor built on the real TinyMCE
-// engine (self-hosted via vite-plugin-static-copy, see vite.config.ts) -
-// the exact same software Joomla's own editor runs on, not react-admin's
-// RichTextInput (that needs a react-admin <Form> context, which these plain
-// useState/fetch admin pages don't have).
-//
-// An earlier version of this component was built on TipTap/ProseMirror
-// instead. That engine only round-trips its OWN recognized node schema
-// (paragraph/heading/list/image/table/...) - any custom <div> layout
-// outside that schema (card grids, background-image styles, absolute
-// positioning) got silently stripped the moment its WYSIWYG canvas parsed
-// it, even though the raw HTML stored in the database was untouched.
-// TinyMCE is contentEditable-based rather than schema-based, so it doesn't
-// have this limitation - it renders and round-trips arbitrary HTML/CSS
-// structure, matching what Joomla's real editor does.
+const uploadFile = (file: Blob, filename: string): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file, filename);
+  return fetch('/api/upload', { method: 'POST', headers: authHeaders(), body: formData })
+    .then((res) => res.json().then((data) => ({ res, data })))
+    .then(({ res, data }) => {
+      if (res.ok && data.url) return data.url as string;
+      throw new Error(data.message || 'Fehler beim Upload');
+    });
+};
+
+// The editor canvas is an iframe, so it doesn't see the site's stylesheet on
+// its own. Hand it whatever the admin document has loaded: Vite injects the
+// compiled CSS as <style data-vite-dev-id> tags in dev and as <link> tags in
+// a production build. Content then looks the same as on the public page.
+const collectSiteStyles = () => {
+  const inline = Array.from(document.querySelectorAll<HTMLStyleElement>('style[data-vite-dev-id]'))
+    .map((s) => s.textContent || '')
+    .join('\n');
+  const links = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
+    .map((l) => l.href)
+    .filter((href) => href.startsWith(window.location.origin) || href.includes('fonts.googleapis.com'));
+  return { inline, links };
+};
+
+const FONT_FAMILIES = [
+  'PT Sans=PT Sans,sans-serif',
+  'PT Sans Narrow=PT Sans Narrow,sans-serif',
+  'Jost=Jost,sans-serif',
+  'Cormorant Garamond=Cormorant Garamond,serif',
+  'Arial=arial,helvetica,sans-serif',
+  'Georgia=georgia,palatino,serif',
+  'Helvetica=helvetica,arial,sans-serif',
+  'Tahoma=tahoma,arial,helvetica,sans-serif',
+  'Times New Roman=times new roman,times,serif',
+  'Verdana=verdana,geneva,sans-serif',
+  'Courier New=courier new,courier,monospace',
+].join('; ');
+
+// Full Joomla-style TinyMCE editor (menu bar + toolbar whose overflow opens
+// behind the "..." button) with a separate raw HTML source view.
 interface RichHtmlInputProps {
   label: string;
   value: string;
   onChange: (html: string) => void;
   helperText?: string;
   minRows?: number;
-  // Defaults this field to the raw HTML-source view on first render (still
-  // one click away from the WYSIWYG view) - useful for fields that mostly
-  // get edited as whole blocks of markup/CSS.
   defaultHtmlMode?: boolean;
+  // Class(es) the public page puts around this HTML, so headings/paragraphs
+  // pick up the same rules inside the editor (e.g. "home-body-content").
+  bodyClass?: string;
+  // Width of the public page's content column, mirrored in the editor.
+  contentMaxWidth?: number;
 }
 
-export const RichHtmlInput = ({ label, value, onChange, helperText, minRows = 6, defaultHtmlMode = false }: RichHtmlInputProps) => {
+export const RichHtmlInput = ({
+  label,
+  value,
+  onChange,
+  helperText,
+  minRows = 6,
+  defaultHtmlMode = false,
+  bodyClass = '',
+  contentMaxWidth,
+}: RichHtmlInputProps) => {
   const [htmlMode, setHtmlMode] = useState(defaultHtmlMode);
+  const siteStyles = useMemo(collectSiteStyles, []);
 
   return (
     <Box sx={{ mb: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
         <Typography variant="subtitle2" sx={{ color: '#666' }}>{label}</Typography>
-        <Tooltip title={htmlMode ? 'Zurück zum Editor' : 'HTML-Quelltext bearbeiten'}>
-          <IconButton size="small" onClick={() => setHtmlMode((m) => !m)}>
-            {htmlMode ? <EditIcon fontSize="small" /> : <CodeIcon fontSize="small" />}
-          </IconButton>
-        </Tooltip>
+        <ToggleButtonGroup size="small" exclusive value={htmlMode ? 'html' : 'visual'} onChange={(_, v) => v && setHtmlMode(v === 'html')}>
+          <ToggleButton value="visual" sx={{ gap: 0.5, textTransform: 'none' }}><VisibilityIcon fontSize="small" />Editor</ToggleButton>
+          <ToggleButton value="html" sx={{ gap: 0.5, textTransform: 'none' }}><CodeIcon fontSize="small" />HTML</ToggleButton>
+        </ToggleButtonGroup>
       </Box>
 
       {htmlMode ? (
@@ -54,40 +92,91 @@ export const RichHtmlInput = ({ label, value, onChange, helperText, minRows = 6,
           minRows={minRows}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          sx={{ fontFamily: 'monospace', '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
+          sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
           helperText={helperText || 'Rohes HTML/CSS - z.B. <p style="color:#c00; font-size:18px" class="meine-klasse">Text</p>'}
         />
       ) : (
-        <Box sx={{ border: '1px solid #c4c4c4', borderRadius: 1, overflow: 'hidden', '& .tox-tinymce': { border: 'none' } }}>
+        <Box sx={{ border: '1px solid #c4c4c4', borderRadius: 1, overflow: 'hidden', '& .tox-tinymce': { border: 'none', borderRadius: 0 } }}>
           <Editor
             licenseKey="gpl"
             tinymceScriptSrc="/tinymce/tinymce.min.js"
             value={value}
             onEditorChange={(html) => onChange(html)}
             init={{
-              height: Math.max(minRows * 24, 320),
-              menubar: false,
+              height: Math.max(minRows * 40, 420),
+              resize: true,
               branding: false,
               promotion: false,
-              relative_urls: false,
-              remove_script_host: false,
+              menubar: 'edit insert view format table tools help',
+              // Edit menu / right-click menu use the element clipboard instead
+              // of TinyMCE's own paste, which can only tell the user to press Ctrl+V.
+              menu: {
+                edit: { title: 'Edit', items: 'undo redo | clipboardCut clipboardCopy clipboardPaste pastetext | selectParent duplicateBlock | selectall | searchreplace' },
+              },
+              contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock | link image table',
+              toolbar_mode: 'sliding',
+              toolbar_sticky: true,
               plugins: [
-                'advlist', 'autolink', 'lists', 'link', 'image', 'charmap',
-                'searchreplace', 'visualblocks', 'visualchars', 'code', 'fullscreen',
-                'insertdatetime', 'media', 'table', 'help', 'wordcount', 'preview', 'nonbreaking',
+                'accordion', 'advlist', 'anchor', 'autolink', 'charmap', 'code', 'codesample',
+                'directionality', 'emoticons', 'fullscreen', 'help', 'image', 'insertdatetime',
+                'link', 'lists', 'media', 'nonbreaking', 'pagebreak', 'preview', 'quickbars',
+                'searchreplace', 'table', 'visualblocks', 'visualchars', 'wordcount',
               ],
               toolbar:
-                'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor | ' +
-                'alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | ' +
-                'link image media table charmap | insertdatetime preview customPrint | ' +
-                'removeformat searchreplace code visualblocks fullscreen help',
-              content_style: 'body { font-family: inherit; font-size: 14px; }',
+                'bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | lineheight | styles | ' +
+                'clipboardCopy clipboardCut clipboardPaste selectParent duplicateBlock | ' +
+                'blocks fontfamily fontsize | searchreplace | bullist numlist | outdent indent | undo redo | ' +
+                'link unlink anchor image media | code | forecolor backcolor | fullscreen | table accordion | ' +
+                'subscript superscript | charmap emoticons hr | ltr rtl | pastetext | ' +
+                'visualchars visualblocks nonbreaking blockquote pagebreak | customPrint preview insertdatetime | removeformat',
+              quickbars_selection_toolbar: 'bold italic underline | forecolor | quicklink h2 h3 blockquote',
+              quickbars_insert_toolbar: false,
+              font_family_formats: FONT_FAMILIES,
+              font_size_formats: '10px 12px 14px 15px 16px 18px 20px 24px 28px 32px 36px 48px 60px',
+              line_height_formats: '1 1.15 1.3 1.5 1.75 2 2.5 3',
+              image_advtab: true,
+              image_caption: true,
+              image_title: true,
+              automatic_uploads: true,
+              file_picker_types: 'image media file',
+              file_picker_callback: (callback, _value, meta) => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                if (meta.filetype === 'image') input.accept = 'image/*';
+                else if (meta.filetype === 'media') input.accept = 'video/*,audio/*';
+                input.onchange = () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  uploadFile(file, file.name)
+                    .then((url) => callback(url, { title: file.name, text: file.name }))
+                    .catch((err) => alert(err.message));
+                };
+                input.click();
+              },
+              images_upload_handler: (blobInfo) =>
+                uploadFile(blobInfo.blob(), blobInfo.filename()),
+              table_default_attributes: { border: '1' },
+              table_default_styles: { 'border-collapse': 'collapse', width: '100%' },
+              // Keep every tag/attribute exactly as written, so custom layouts
+              // (Tailwind classes, inline styles, embeds) survive a round trip.
+              valid_elements: '*[*]',
+              extended_valid_elements: '*[*]',
+              valid_children: '+body[style|link],+a[div|h1|h2|h3|h4|h5|h6|p|span|img|ul|ol|li|section]',
+              convert_urls: false,
+              relative_urls: false,
+              remove_script_host: false,
+              content_css: siteStyles.links,
+              body_class: bodyClass,
+              content_style:
+                siteStyles.inline +
+                `\nbody{margin:0 auto;padding:24px;background:#fff;${contentMaxWidth ? `max-width:${contentMaxWidth}px;` : ''}}\n` +
+                ELEMENT_CLIPBOARD_CSS,
               setup: (editor) => {
-                // TinyMCE dropped the old "print" plugin/button from its
-                // open-source core bundle - re-added here the same way the
-                // previous TipTap-based toolbar did it: open a new window
-                // with just this field's HTML and trigger the browser's
-                // print dialog.
+                // Copy/cut/paste whole elements (boxes, images, text), plus
+                // "select parent" and "duplicate" - see editorElementClipboard.ts.
+                registerElementClipboard(editor);
+
+                // The open-source TinyMCE build has no print button.
                 editor.ui.registry.addButton('customPrint', {
                   icon: 'print',
                   tooltip: 'Drucken',
@@ -104,18 +193,6 @@ export const RichHtmlInput = ({ label, value, onChange, helperText, minRows = 6,
                   },
                 });
               },
-              images_upload_handler: (blobInfo) =>
-                new Promise((resolve, reject) => {
-                  const formData = new FormData();
-                  formData.append('file', blobInfo.blob(), blobInfo.filename());
-                  fetch('/api/upload', { method: 'POST', headers: authHeaders(), body: formData })
-                    .then((res) => res.json().then((data) => ({ res, data })))
-                    .then(({ res, data }) => {
-                      if (res.ok && data.url) resolve(data.url);
-                      else reject(data.message || 'Fehler beim Bild-Upload');
-                    })
-                    .catch(() => reject('Netzwerkfehler beim Bild-Upload'));
-                }),
             }}
           />
         </Box>

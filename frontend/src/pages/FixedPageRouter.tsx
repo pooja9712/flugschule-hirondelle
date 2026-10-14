@@ -51,6 +51,7 @@ import { FAQ } from './FAQ';
 import { Tandem } from './Tandem';
 import { DynamicPage } from './DynamicPage';
 import { LegalPageContent } from './LegalPageContent';
+import { PageArticleOverride } from './PageArticleOverride'; // PAGE ARTICLE MODE
 
 const KIND_COMPONENTS: Record<string, ComponentType<{ contentId?: string }>> = {
   home: Home,
@@ -164,7 +165,15 @@ export const FixedPageRouter = () => {
   if (resolved) {
     if (resolved.legalPage) return <LegalPageContent title={resolved.legalPage.title} content={resolved.legalPage.content} />;
     const Component = KIND_COMPONENTS[resolved.kind];
-    if (Component) return <Component contentId={resolved.contentId} />;
+    // PAGE ARTICLE MODE: duplicates use their own slug as article key,
+    // renamed originals their kind. To revert: `return <Component contentId={resolved.contentId} />;`
+    if (Component) {
+      return (
+        <PageArticleOverride articleKey={resolved.contentId || resolved.kind}>
+          <Component contentId={resolved.contentId} />
+        </PageArticleOverride>
+      );
+    }
   }
 
   return <DynamicPage />;

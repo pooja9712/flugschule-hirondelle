@@ -49,6 +49,7 @@ import { GalleryList, GalleryEdit, GalleryCreate } from './Gallery'; // NEW - st
 import { PagesManager } from './Pages'; // NEW - "Seiten" CMS: admin-created pages with their own URL, Unlayer-based editor
 import { MenuManager } from './MenuManager'; // NEW - "Menü": header nav items and their sub-items
 import { HomeContentEditor } from './HomeContentEditor'; // NEW - editable data (text/images) for the hardcoded Home.tsx design
+import { PageArticleEditor } from './PageArticleEditor'; // PAGE ARTICLE MODE - Joomla-style body editor (revert: remove this + its Route)
 import { AusbildungContentEditor } from './AusbildungContentEditor';
 import { PerformanceContentEditor } from './PerformanceContentEditor';
 import { ReisenContentEditor } from './ReisenContentEditor';
@@ -228,6 +229,8 @@ export const AdminApp = () => {
                 duplicate (Pages.tsx > "Duplizieren") - see
                 FixedPageDuplicate model / fixedPageDuplicates.routes.ts. */}
             <Route path="/home-content/:contentId?" element={<Authenticated><HomeContentEditor /></Authenticated>} />
+            {/* PAGE ARTICLE MODE */}
+            <Route path="/page-article/:key" element={<Authenticated><PageArticleEditor /></Authenticated>} />
             <Route path="/ausbildung-content/:contentId?" element={<Authenticated><AusbildungContentEditor /></Authenticated>} />
             <Route path="/performance-content/:contentId?" element={<Authenticated><PerformanceContentEditor /></Authenticated>} />
             <Route path="/reisen-content/:contentId?" element={<Authenticated><ReisenContentEditor /></Authenticated>} />

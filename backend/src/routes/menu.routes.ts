@@ -72,6 +72,69 @@ router.post('/menu/publish', authenticateJWT, authorizeAdmin, async (req, res) =
   }
 });
 
+// Admin: save the whole menu tree for one location in one go - the
+// "Speichern" button in MenuManager.tsx. The admin page edits everything
+// (add, edit, delete, reorder, nest, toggle Aktiv) purely in local state,
+// with nothing persisted until this is called. Body:
+//   { location, items: [{ id?, label, url, target, published,
+//                          subItems: [{ id?, label, url, target, imageUrl, published }] }] }
+// Replaces the location's MenuItem/MenuSubItem rows with exactly this tree
+// (keeping existing ids where given, so nothing that remembers an id breaks),
+// then publishes it to MenuSnapshot so the live site picks it up right away.
+router.post('/menu/save', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    const location = req.body.location === 'footer' ? 'footer' : 'header';
+    const items: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    // Ids the client made up for not-yet-saved entries are dropped so the
+    // database assigns real ones.
+    const keepId = (id: unknown) => (typeof id === 'string' && id && !id.startsWith('new-') ? { id } : {});
+    const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.menuItem.deleteMany({ where: { location } });
+      for (const [index, item] of items.entries()) {
+        const created = await tx.menuItem.create({
+          data: {
+            ...keepId(item.id),
+            label: str(item.label).trim() || 'Ohne Titel',
+            url: str(item.url),
+            target: item.target === '_blank' ? '_blank' : '_self',
+            published: item.published !== false,
+            location,
+            order: index,
+          },
+        });
+        // Footer is a flat link list - never store sub-items there.
+        const subItems: any[] = location === 'header' && Array.isArray(item.subItems) ? item.subItems : [];
+        for (const [subIndex, sub] of subItems.entries()) {
+          await tx.menuSubItem.create({
+            data: {
+              ...keepId(sub.id),
+              menuItemId: created.id,
+              label: str(sub.label).trim() || 'Ohne Titel',
+              url: str(sub.url),
+              target: sub.target === '_blank' ? '_blank' : '_self',
+              imageUrl: str(sub.imageUrl) || null,
+              published: sub.published !== false,
+              order: subIndex,
+            },
+          });
+        }
+      }
+    }, { timeout: 20000 });
+
+    const tree = await loadLiveTree(location);
+    await prisma.menuSnapshot.upsert({
+      where: { location },
+      update: { data: JSON.stringify(tree) },
+      create: { location, data: JSON.stringify(tree) },
+    });
+    res.json(tree);
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Admin: whether the currently live tree for this location has unpublished
 // changes - compares it against the last-published snapshot so
 // MenuManager.tsx can show/hide a "ungespeicherte Änderungen" hint without
