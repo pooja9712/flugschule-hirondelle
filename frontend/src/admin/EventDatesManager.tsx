@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRecordContext, useNotify, useRefresh } from 'react-admin';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
     Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField as MuiTextField,
     ToggleButtonGroup, ToggleButton, Checkbox, FormControlLabel, Chip, IconButton, Tooltip,
@@ -75,6 +75,18 @@ export const EventDatesManager = () => {
     const notify = useNotify();
     const refresh = useRefresh();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // react-admin's TabbedForm puts the active tab as a trailing numeric
+    // path segment (".../events/<id>/5" = tab index 5, "Termine"). Editing
+    // a sibling date from inside this exact tab previously always navigated
+    // to just ".../events/<otherId>" with no tab segment, which silently
+    // lands on tab 0 ("Inhalte") instead - jarring when you're trying to
+    // bounce between dates of the same series while managing them.
+    const currentTabSuffix = (() => {
+        const m = location.pathname.match(/\/events\/[^/]+\/(\d+)$/);
+        return m ? `/${m[1]}` : '';
+    })();
 
     const [filter, setFilter] = useState('all');
     const [dates, setDates] = useState<any[]>([]);
@@ -367,7 +379,7 @@ export const EventDatesManager = () => {
                                 </TableCell>
                                 <TableCell align="right">
                                     <Tooltip title="Bearbeiten">
-                                        <IconButton size="small" onClick={() => navigate(`/admin/events/${encodeURIComponent(d.id)}`)}>
+                                        <IconButton size="small" onClick={() => navigate(`/admin/events/${encodeURIComponent(d.id)}${currentTabSuffix}`)}>
                                             <EditIcon fontSize="small" />
                                         </IconButton>
                                     </Tooltip>
