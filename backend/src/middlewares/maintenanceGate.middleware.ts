@@ -67,8 +67,16 @@ function renderGatePage(opts: { redirect: string; error?: boolean }): string {
 
 export async function maintenanceGate(req: Request, res: Response, next: NextFunction) {
   // API calls and the admin SPA (its own real JWT login governs access
-  // there) always pass through untouched.
-  if (req.path.startsWith('/api') || req.path.startsWith('/admin') || req.path === '/__unlock') {
+  // there) always pass through untouched. Any actual static file (the
+  // built /assets/*.js|css bundle both /admin and the public site load,
+  // uploaded images under /uploads, favicons etc.) must pass through too -
+  // a gated visitor never gets served the real index.html that references
+  // those URLs in the first place (this gate's own page has no asset
+  // references at all), so letting them resolve here is safe and doesn't
+  // leak anything; without this, /admin's own JS bundle request was being
+  // gated too, so the admin SPA never booted - a blank white screen.
+  const hasFileExtension = /\.[a-zA-Z0-9]+$/.test(req.path);
+  if (req.path.startsWith('/api') || req.path.startsWith('/admin') || req.path === '/__unlock' || hasFileExtension) {
     return next();
   }
 
