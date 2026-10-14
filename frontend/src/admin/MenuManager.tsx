@@ -1,5 +1,6 @@
-import { useRef, useEffect, useState, type DragEvent } from 'react';
+import { useRef, useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useNotify } from 'react-admin';
+import i18n from '../i18n';
 import {
   Alert,
   Box,
@@ -14,7 +15,6 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
-  MenuItem as SelectMenuItem,
   Paper,
   Switch,
   Tab,
@@ -26,23 +26,30 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import UploadIcon from '@mui/icons-material/Upload';
 import CloseIcon from '@mui/icons-material/Close';
 import DescriptionIcon from '@mui/icons-material/Description';
 import LinkIcon from '@mui/icons-material/Link';
+import SearchIcon from '@mui/icons-material/Search';
+import InputAdornment from '@mui/material/InputAdornment';
+import Autocomplete from '@mui/material/Autocomplete';
 
 // "Menü" - admin management for the header's top-level navigation items and
 // their sub-items (Ausbildung > Schnupperkurs, etc.) AND the footer's flat
 // link list, both backed by the same MenuItem/MenuSubItem models
 // (menu.routes.ts), distinguished by MenuItem.location ("header" | "footer").
 // Replaces what used to be hardcoded directly in Header.tsx/Footer.tsx.
-// Drag-and-drop reordering mirrors Gallery.tsx's GalleryImagesInput (plain
-// HTML5 drag events, no library). Registered as a CustomRoute at /admin/menu
-// in AdminApp.tsx, right before Galerie in CustomMenu.tsx's Komponenten
-// group.
+// Drag-and-drop uses plain HTML5 drag events, no library. Registered as a
+// CustomRoute at /admin/menu in AdminApp.tsx, right before Galerie in
+// CustomMenu.tsx's Komponenten group.
+//
+// NOTHING on this page auto-saves: every edit to the menu structure (add,
+// edit, delete, drag/reorder, nest, toggle Aktiv) only changes the local
+// draft below. The whole tree is written to the database - and published to
+// the live site - in one go when the admin clicks "Speichern" (POST
+// /menu/save). "Verwerfen" reloads the last saved state.
 //
 // Footer items never have sub-items (the footer is a flat link list, not a
 // dropdown nav), so the "Header"/"Footer" tab below hides all sub-item UI
@@ -73,6 +80,24 @@ interface ItemRow {
   subItems: SubItemRow[];
 }
 
+interface PageOption { key: string; label: string; url: string }
+
+// What is currently being dragged: an existing top-level item, an existing
+// sub-item, or one or more pages from the left "Seiten" picker.
+type DragSource =
+  | { kind: 'item'; id: string }
+  | { kind: 'sub'; parentId: string; id: string }
+  | { kind: 'page'; entries: { label: string; url: string }[] };
+
+// Where a drop lands. parentId null = the top level, otherwise inside that
+// item's sub-items. targetId is the row hovered (null for the "append at
+// the end" zones); "into" = nest under the hovered top-level item.
+interface DropTarget {
+  parentId: string | null;
+  targetId: string | null;
+  mode: 'before' | 'after' | 'into' | 'end';
+}
+
 const authHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem('auth')}`,
   'Content-Type': 'application/json',
@@ -86,43 +111,144 @@ const describeApiError = (res: Response, fallback: string): string => {
 const emptyItemForm = { label: '', url: '', target: '_self', published: true };
 const emptySubItemForm = { label: '', url: '', target: '_self', imageUrl: '', published: true };
 
+// Temporary client-side id for entries not saved yet - the "new-" prefix
+// tells POST /menu/save to let the database assign a real id instead.
+const tempId = () => `new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+// Only the fields that actually matter for "has anything changed", so the
+// dirty check isn't thrown off by order/createdAt/etc.
+const serializeTree = (items: ItemRow[]) =>
+  JSON.stringify(
+    items.map((i) => ({
+      id: i.id, label: i.label, url: i.url, target: i.target, published: i.published,
+      subItems: i.subItems.map((s) => ({ id: s.id, label: s.label, url: s.url, target: s.target, imageUrl: s.imageUrl || '', published: s.published })),
+    }))
+  );
+
 // The hand-built "fixed" pages (same set as Pages.tsx's own list), offered
 // in the left "Seiten" picker alongside admin-created Seiten pages, so an
-// admin can add an existing page to the menu by ticking a checkbox instead
-// of retyping its URL - the same "pick from Pages" flow WordPress's own
-// Appearance > Menus screen uses. This list is fetched from GET
-// /api/fixed-page-duplicates/kinds (the same registry Pages.tsx reads) -
-// NOT hardcoded here - so a new fixed page (e.g. a future /infos/* sub-page)
-// shows up in this picker automatically the moment it's added to that
-// registry, with nothing in this file to update. Only kinds with
-// `hasSettings: true` get their title/URL live-overridden from
-// /api/fixed-page-settings below (a rename, e.g. Ausbildung -> "Training"
-// at /education) - the rest always use their fixed `defaultUrl`.
+// admin can add an existing page to the menu by ticking a checkbox or
+// dragging it into the Menüstruktur instead of retyping its URL - the same
+// "pick from Pages" flow WordPress's own Appearance > Menus screen uses.
+// This list is fetched from GET /api/fixed-page-duplicates/kinds (the same
+// registry Pages.tsx reads) - NOT hardcoded here - so a new fixed page shows
+// up in this picker automatically. Only kinds with `hasSettings: true` get
+// their title/URL live-overridden from /api/fixed-page-settings below.
 interface FixedPageKindInfo { kind: string; label: string; defaultUrl: string; hasSettings: boolean }
+
+// --- Bilingual page search (left "Seiten" picker) ---
+// Pages only have one (mostly German) title, so typing "contact" would never
+// find "Kontakt". The search therefore also tries the other language's word:
+// German<->English pairs come from the site's own i18n.ts texts (same key in
+// "de" and "en", short values only) plus the manual list below for common
+// menu words not covered there. Title AND URL are searched, so English slugs
+// like /education match too.
+const MANUAL_SEARCH_PAIRS: [string, string][] = [
+  ['startseite', 'home'], ['kontakt', 'contact'], ['impressum', 'imprint'], ['impressum', 'legal notice'],
+  ['datenschutz', 'privacy'], ['agb', 'terms'], ['ausbildung', 'training'], ['ausbildung', 'education'],
+  ['reisen', 'travel'], ['reise', 'trip'], ['kalender', 'calendar'], ['buchung', 'booking'], ['anmeldung', 'registration'],
+  ['termine', 'dates'], ['termine', 'events'], ['veranstaltung', 'event'], ['kurs', 'course'], ['preise', 'prices'],
+  ['wetter', 'weather'], ['gelände', 'terrain'], ['fluggebiet', 'flying site'], ['galerie', 'gallery'], ['medien', 'media'],
+  ['über uns', 'about'], ['infos', 'information'], ['neuigkeiten', 'news'], ['gutschein', 'voucher'], ['geschenk', 'gift'],
+  ['fragen', 'faq'], ['ausrüstung', 'equipment'], ['schnupperkurs', 'trial course'], ['grundkurs', 'basic course'],
+  ['höhenflug', 'high altitude'], ['sicherheit', 'safety'], ['lehrer', 'instructor'], ['fluglehrer', 'instructor'],
+  ['anfahrt', 'directions'], ['laden', 'store'], ['warenkorb', 'cart'], ['konto', 'account'], ['bewertungen', 'reviews'],
+  ['tandemflug', 'tandem flight'], ['leistungen', 'services'], ['unterkunft', 'accommodation'],
+];
+
+// Case-, accent- and umlaut-insensitive: "A"/"a", "Ä"/"ä"/"ae"/"a" and
+// "ß"/"ss" all compare equal. Applied to both the query and the page text.
+const normalizeSearch = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/ß/g, 'ss')
+    .replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const buildSearchPairs = (): [string, string][] => {
+  const pairs: [string, string][] = [...MANUAL_SEARCH_PAIRS];
+  // Only the navigation/footer link texts - the rest of i18n.ts is page
+  // copy (sentences, form labels) that would just add noise.
+  const de = i18n.getResourceBundle('de', 'translation') || {};
+  const en = i18n.getResourceBundle('en', 'translation') || {};
+  (['nav', 'footer'] as const).forEach((section) => {
+    const a = de[section] || {};
+    const b = en[section] || {};
+    Object.keys(a).forEach((k) => {
+      if (typeof a[k] === 'string' && typeof b[k] === 'string' && a[k].split(/\s+/).length <= 3) pairs.push([a[k], b[k]]);
+    });
+  });
+  return pairs
+    .map(([x, y]) => [normalizeSearch(x), normalizeSearch(y)] as [string, string])
+    .filter(([x, y]) => x && y && x !== y);
+};
+
+// How well a page matches the query (higher = better, -1 = no match). Only
+// STARTING letters count - the title (or URL) has to begin with what was
+// typed, so "a" finds "Ausbildung" but not "Kontakt". Ranked: title first,
+// then URL, then pages found via the German<->English translation (from 3
+// letters on, e.g. "cont" -> "Kontakt").
+const scorePage = (p: PageOption, query: string, pairs: [string, string][]): number => {
+  const q = normalizeSearch(query);
+  if (!q) return 0;
+  const label = normalizeSearch(p.label);
+  const slug = normalizeSearch(p.url);
+  // Starting letters only - never a match in the middle of a word.
+  if (label.startsWith(q)) return 100;
+  if (slug.startsWith(q)) return 60;
+  if (q.length < 3) return -1;
+  let best = -1;
+  pairs.forEach(([de, en]) => {
+    const other = de.startsWith(q) ? en : en.startsWith(q) ? de : null;
+    if (!other) return;
+    if (label.startsWith(other)) best = Math.max(best, 40);
+    else if (slug.startsWith(other)) best = Math.max(best, 30);
+  });
+  return best;
+};
+
+// Filters and ranks pages for the query; original order breaks ties.
+const searchPages = (options: PageOption[], query: string, pairs: [string, string][]): PageOption[] => {
+  if (!normalizeSearch(query)) return options;
+  return options
+    .map((p, i) => ({ p, i, score: scorePage(p, query, pairs) }))
+    .filter((r) => r.score >= 0)
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .map((r) => r.p);
+};
 
 export const MenuManager = () => {
   const notify = useNotify();
   const [location, setLocation] = useState<'header' | 'footer'>('header');
   const [items, setItems] = useState<ItemRow[]>([]);
+  const [savedTree, setSavedTree] = useState('[]');
   const [loading, setLoading] = useState(true);
+  // Every item starts closed; this tracks the ones the admin opened (or
+  // that were opened automatically by dropping/adding a sub-item into them).
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemRow | null>(null);
   const [itemForm, setItemForm] = useState(emptyItemForm);
-  const [savingItem, setSavingItem] = useState(false);
 
   const [subDialogOpen, setSubDialogOpen] = useState(false);
   const [subParentId, setSubParentId] = useState<string | null>(null);
   const [editingSubItem, setEditingSubItem] = useState<SubItemRow | null>(null);
   const [subItemForm, setSubItemForm] = useState(emptySubItemForm);
-  const [savingSubItem, setSavingSubItem] = useState(false);
   const [uploadingSubItemImage, setUploadingSubItemImage] = useState(false);
   const subItemFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // The server's own "live tables differ from the published snapshot" flag
+  // (e.g. a page was set to draft, which deactivates its menu entry via
+  // menuSync.ts) - lets the admin publish that even with no local edits.
+  const [serverDirty, setServerDirty] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
-  const [publishing, setPublishing] = useState(false);
+
+  const localDirty = serializeTree(items) !== savedTree;
+  const dirty = localDirty || serverDirty;
 
   // None of this page's many fetches used to distinguish a 401/403 (expired
   // login, tokens last 1 day) from "there's genuinely nothing here yet" -
@@ -171,24 +297,17 @@ export const MenuManager = () => {
     }
   };
 
-  const [dragItemIndex, setDragItemIndex] = useState<number | null>(null);
-  const [dragSubItem, setDragSubItem] = useState<{ parentId: string; index: number } | null>(null);
-  // Feedback for what dropping onto a top-level item's row will do: reorder
-  // before/after it, or ("into") nest the dragged item/sub-item as one of
-  // its own Untermenüpunkte. Computed live from the pointer's vertical
-  // position within the row during dragover.
-  const [overTarget, setOverTarget] = useState<{ index: number; mode: 'before' | 'after' | 'into' } | null>(null);
+  const [drag, setDrag] = useState<DragSource | null>(null);
+  const [over, setOver] = useState<DropTarget | null>(null);
 
   // --- "Menüpunkt hinzufügen" picker (left panel) ---
   const [fixedPageKinds, setFixedPageKinds] = useState<FixedPageKindInfo[]>([]);
   const [fixedPageSettings, setFixedPageSettings] = useState<Record<string, { slug: string | null; title: string }>>({});
-  const [customPages, setCustomPages] = useState<{ key: string; label: string; url: string }[]>([]);
-  const [duplicatePages, setDuplicatePages] = useState<{ key: string; label: string; url: string }[]>([]);
+  const [customPages, setCustomPages] = useState<PageOption[]>([]);
+  const [duplicatePages, setDuplicatePages] = useState<PageOption[]>([]);
   const [selectedPageKeys, setSelectedPageKeys] = useState<Set<string>>(new Set());
   const [customLinkLabel, setCustomLinkLabel] = useState('');
   const [customLinkUrl, setCustomLinkUrl] = useState('');
-  const [addingSelected, setAddingSelected] = useState(false);
-  const [addingCustomLink, setAddingCustomLink] = useState(false);
 
   // The full fixed-page registry (see fixedPageDuplicates.routes.ts's
   // GET /kinds) - every kind listed there appears in the picker below, so a
@@ -250,7 +369,7 @@ export const MenuManager = () => {
       .catch(() => {});
   }, []);
 
-  const fixedPages = fixedPageKinds.map((d) => {
+  const fixedPages: PageOption[] = fixedPageKinds.map((d) => {
     const live = d.hasSettings ? fixedPageSettings[d.kind] : undefined;
     const label = live?.title || d.label;
     const url = d.kind === 'home' ? '/' : live?.slug ? `/${live.slug}` : d.defaultUrl;
@@ -263,6 +382,10 @@ export const MenuManager = () => {
 
   const pageOptions = [...fixedPages, ...customPages, ...duplicatePages];
 
+  const [pageSearch, setPageSearch] = useState('');
+  const searchPairs = useMemo(buildSearchPairs, []);
+  const visiblePageOptions = searchPages(pageOptions, pageSearch, searchPairs);
+
   const togglePageSelected = (key: string) => {
     setSelectedPageKeys((prev) => {
       const next = new Set(prev);
@@ -272,56 +395,36 @@ export const MenuManager = () => {
     });
   };
 
-  // Shared by both "add selected pages" and "add custom link": always
-  // creates a new top-level MenuItem. Nesting an entry under another item as
-  // a sub-item is still done from the Menüstruktur panel on the right (the
-  // per-item "Untermenüpunkt hinzufügen" button), not from this picker.
-  const addEntriesToMenu = async (entries: { label: string; url: string }[]) => {
-    if (entries.length === 0) return;
-    try {
-      for (const entry of entries) {
-        await fetch('/api/menuitems', {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({ label: entry.label, url: entry.url, target: '_self', published: true, location }),
-        });
-      }
-      notify(entries.length === 1 ? 'Zum Menü hinzugefügt' : `${entries.length} Einträge zum Menü hinzugefügt`, { type: 'success' });
-      fetchItems();
-    } catch {
-      notify('Fehler beim Hinzufügen', { type: 'error' });
-    }
-  };
+  // Warn before closing/reloading the tab with unsaved menu changes.
+  useEffect(() => {
+    if (!localDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [localDirty]);
 
-  const addSelectedPages = async () => {
-    const entries = pageOptions.filter((p) => selectedPageKeys.has(p.key)).map((p) => ({ label: p.label, url: p.url }));
-    if (entries.length === 0) {
-      notify('Bitte mindestens eine Seite auswählen.', { type: 'warning' });
-      return;
-    }
-    setAddingSelected(true);
-    await addEntriesToMenu(entries);
-    setSelectedPageKeys(new Set());
-    setAddingSelected(false);
-  };
+  // --- Load / save ---
 
-  const addCustomLink = async () => {
-    if (!customLinkLabel.trim() || !customLinkUrl.trim()) {
-      notify('Bitte Link-Text und URL eingeben.', { type: 'warning' });
-      return;
-    }
-    setAddingCustomLink(true);
-    await addEntriesToMenu([{ label: customLinkLabel.trim(), url: customLinkUrl.trim() }]);
-    setCustomLinkLabel('');
-    setCustomLinkUrl('');
-    setAddingCustomLink(false);
+  const fetchPublishStatus = () => {
+    fetch(`/api/menu/publish-status?location=${location}`, { headers: authHeaders() })
+      .then((res) => { if (res.ok) return res.json(); flagIfSessionExpired(res); return null; })
+      .then((data) => {
+        if (!data) return;
+        setServerDirty(!!data.dirty);
+        setPublishedAt(data.publishedAt);
+      })
+      .catch(() => {});
   };
 
   const fetchItems = () => {
     setLoading(true);
     fetch(`/api/menuitems?location=${location}`, { headers: authHeaders() })
       .then((res) => { if (res.ok) return res.json(); flagIfSessionExpired(res); return []; })
-      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const tree: ItemRow[] = Array.isArray(data) ? data : [];
+        setItems(tree);
+        setSavedTree(serializeTree(tree));
+      })
       .catch(() => notify('Fehler beim Laden des Menüs', { type: 'error' }))
       .finally(() => setLoading(false));
     fetchPublishStatus();
@@ -329,41 +432,198 @@ export const MenuManager = () => {
 
   useEffect(fetchItems, [location]);
 
-  // --- Publish (the live MenuItem/MenuSubItem tree above is what admin
-  // edits always save to immediately - the PUBLIC site instead reads the
-  // separate, explicitly-published MenuSnapshot, so none of those edits
-  // reach the front-end until "Speichern" here. See menu.routes.ts. ---
-
-  const fetchPublishStatus = () => {
-    fetch(`/api/menu/publish-status?location=${location}`, { headers: authHeaders() })
-      .then((res) => { if (res.ok) return res.json(); flagIfSessionExpired(res); return null; })
-      .then((data) => {
-        if (!data) return;
-        setDirty(!!data.dirty);
-        setPublishedAt(data.publishedAt);
-      })
-      .catch(() => {});
-  };
-
-  const publishMenu = async () => {
-    setPublishing(true);
+  // The ONLY place menu changes are persisted: writes the whole draft tree
+  // and publishes it to the live site in one request.
+  const saveMenu = async () => {
+    setSaving(true);
     try {
-      const res = await fetch('/api/menu/publish', {
+      const res = await fetch('/api/menu/save', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ location }),
+        body: JSON.stringify({ location, items }),
       });
-      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Veröffentlichen'));
-      notify(location === 'header' ? 'Hauptmenü veröffentlicht' : 'Footer-Links veröffentlicht', { type: 'success' });
+      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Speichern'));
+      const tree: ItemRow[] = await res.json();
+      setItems(tree);
+      setSavedTree(serializeTree(tree));
+      notify(location === 'header' ? 'Hauptmenü gespeichert' : 'Footer-Links gespeichert', { type: 'success' });
       fetchPublishStatus();
     } catch (e: any) {
-      notify(e.message || 'Fehler beim Veröffentlichen', { type: 'error' });
+      notify(e.message || 'Fehler beim Speichern', { type: 'error' });
     } finally {
-      setPublishing(false);
+      setSaving(false);
     }
   };
 
+  const discardChanges = () => {
+    if (!window.confirm('Alle ungespeicherten Änderungen verwerfen?')) return;
+    fetchItems();
+  };
+
+  const switchLocation = (next: 'header' | 'footer') => {
+    if (localDirty && !window.confirm('Es gibt ungespeicherte Änderungen. Wechseln und Änderungen verwerfen?')) return;
+    setLocation(next);
+    setExpanded({});
+  };
+
   const toggleExpanded = (id: string) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  const isExpanded = (id: string) => location === 'header' && !!expanded[id];
+
+  // --- Local tree helpers (none of these touch the server) ---
+
+  const newItem = (entry: { label: string; url: string; target?: string; published?: boolean }): ItemRow => ({
+    id: tempId(), label: entry.label, url: entry.url, target: entry.target || '_self',
+    published: entry.published ?? true, order: 0, subItems: [],
+  });
+
+  const newSub = (parentId: string, entry: { label: string; url: string; target?: string; imageUrl?: string | null; published?: boolean }): SubItemRow => ({
+    id: tempId(), menuItemId: parentId, label: entry.label, url: entry.url, target: entry.target || '_self',
+    imageUrl: entry.imageUrl || null, published: entry.published ?? true, order: 0,
+  });
+
+  const addEntriesToMenu = (entries: { label: string; url: string }[]) => {
+    if (entries.length === 0) return;
+    setItems((prev) => [...prev, ...entries.map((e) => newItem(e))]);
+  };
+
+  const addSelectedPages = () => {
+    const entries = pageOptions.filter((p) => selectedPageKeys.has(p.key)).map((p) => ({ label: p.label, url: p.url }));
+    if (entries.length === 0) {
+      notify('Bitte mindestens eine Seite auswählen.', { type: 'warning' });
+      return;
+    }
+    addEntriesToMenu(entries);
+    setSelectedPageKeys(new Set());
+  };
+
+  const addCustomLink = () => {
+    if (!customLinkLabel.trim() || !customLinkUrl.trim()) {
+      notify('Bitte Link-Text und URL eingeben.', { type: 'warning' });
+      return;
+    }
+    addEntriesToMenu([{ label: customLinkLabel.trim(), url: customLinkUrl.trim() }]);
+    setCustomLinkLabel('');
+    setCustomLinkUrl('');
+  };
+
+  // Applies one drag-and-drop to the local tree: lifts the dragged entry out
+  // of wherever it was (or creates new ones for dragged pages), then drops
+  // it at the target - as a top-level item or as a sub-item, converting
+  // between the two as needed. The menu is only 2 levels deep, so an item
+  // that has its own sub-items can't become a sub-item itself.
+  const applyDrop = (source: DragSource, target: DropTarget) => {
+    if (source.kind === 'item' && target.parentId === null && target.targetId === source.id) return;
+    if (source.kind === 'sub' && target.targetId === source.id) return;
+    if (source.kind === 'item' && target.parentId === source.id) return;
+
+    const intoSubs = target.parentId !== null || target.mode === 'into';
+    const movingItem = source.kind === 'item' ? items.find((i) => i.id === source.id) : undefined;
+    if (intoSubs && movingItem && movingItem.subItems.length > 0) {
+      notify(`"${movingItem.label}" hat eigene Untermenüpunkte und kann nicht selbst zu einem Untermenüpunkt werden.`, { type: 'warning' });
+      return;
+    }
+
+    // 1. Lift the moving entries out of the tree.
+    let tree = items.map((i) => ({ ...i, subItems: [...i.subItems] }));
+    let moving: { id: string; label: string; url: string; target: string; published: boolean; imageUrl?: string | null; subItems?: SubItemRow[] }[] = [];
+    if (source.kind === 'item') {
+      const found = tree.find((i) => i.id === source.id);
+      if (!found) return;
+      moving = [found];
+      tree = tree.filter((i) => i.id !== source.id);
+    } else if (source.kind === 'sub') {
+      const parent = tree.find((i) => i.id === source.parentId);
+      const found = parent?.subItems.find((s) => s.id === source.id);
+      if (!parent || !found) return;
+      moving = [found];
+      parent.subItems = parent.subItems.filter((s) => s.id !== source.id);
+    } else {
+      moving = source.entries.map((e) => ({ id: tempId(), label: e.label, url: e.url, target: '_self', published: true }));
+    }
+
+    // 2. Drop them at the target.
+    if (!intoSubs) {
+      const asItems: ItemRow[] = moving.map((m) => ({
+        id: m.id, label: m.label, url: m.url, target: m.target, published: m.published, order: 0,
+        subItems: m.subItems || [],
+      }));
+      let pos = tree.length;
+      if (target.targetId) {
+        const idx = tree.findIndex((i) => i.id === target.targetId);
+        if (idx >= 0) pos = target.mode === 'after' ? idx + 1 : idx;
+      }
+      tree.splice(pos, 0, ...asItems);
+    } else {
+      const parentId = target.parentId ?? target.targetId;
+      const parent = tree.find((i) => i.id === parentId);
+      if (!parent) return;
+      const asSubs: SubItemRow[] = moving.map((m) => ({
+        id: m.id, menuItemId: parent.id, label: m.label, url: m.url, target: m.target,
+        imageUrl: m.imageUrl || null, published: m.published, order: 0,
+      }));
+      let pos = parent.subItems.length;
+      if (target.parentId !== null && target.targetId) {
+        const idx = parent.subItems.findIndex((s) => s.id === target.targetId);
+        if (idx >= 0) pos = target.mode === 'after' ? idx + 1 : idx;
+      }
+      parent.subItems.splice(pos, 0, ...asSubs);
+      setExpanded((prev) => ({ ...prev, [parent.id]: true }));
+    }
+    setItems(tree);
+  };
+
+  const startDrag = (e: DragEvent<HTMLElement>, source: DragSource) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox won't start a drag without some data set.
+    e.dataTransfer.setData('text/plain', '');
+    // Deferred on purpose: setting it synchronously re-renders mid-dragstart
+    // (drop zones appear, the row fades, layout shifts), and Chrome aborts a
+    // drag whose DOM changes during dragstart - the drag ended instantly.
+    setTimeout(() => setDrag(source), 0);
+  };
+
+  const endDrag = () => { setDrag(null); setOver(null); };
+
+  const handleDragOver = (e: DragEvent<HTMLElement>, target: DropTarget) => {
+    e.preventDefault();
+    if (!drag) return;
+    e.dataTransfer.dropEffect = 'move';
+    e.stopPropagation();
+    if (over?.parentId !== target.parentId || over?.targetId !== target.targetId || over?.mode !== target.mode) setOver(target);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLElement>, target: DropTarget) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (drag) applyDrop(drag, target);
+    endDrag();
+  };
+
+  // Where within a top-level row the pointer is decides what dropping there
+  // does: top/bottom edge = place before/after it, middle band = nest into
+  // it as a sub-item. The footer never nests (flat list), so it just splits
+  // the row in half.
+  const topRowMode = (e: DragEvent<HTMLElement>): 'before' | 'after' | 'into' => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientY - rect.top) / rect.height;
+    if (location === 'footer') return ratio < 0.5 ? 'before' : 'after';
+    if (ratio < 0.25) return 'before';
+    if (ratio > 0.75) return 'after';
+    return 'into';
+  };
+
+  const subRowMode = (e: DragEvent<HTMLElement>): 'before' | 'after' => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY - rect.top < rect.height / 2 ? 'before' : 'after';
+  };
+
+  const indicatorSx = (parentId: string | null, targetId: string | null) => {
+    if (!over || over.parentId !== parentId || over.targetId !== targetId) return {};
+    if (over.mode === 'into' || over.mode === 'end') return { boxShadow: (t: any) => `inset 0 0 0 2px ${t.palette.primary.main}`, bgcolor: 'action.hover' };
+    if (over.mode === 'before') return { boxShadow: (t: any) => `inset 0 3px 0 0 ${t.palette.primary.main}` };
+    return { boxShadow: (t: any) => `inset 0 -3px 0 0 ${t.palette.primary.main}` };
+  };
 
   // --- Top-level items ---
 
@@ -379,151 +639,26 @@ export const MenuManager = () => {
     setItemDialogOpen(true);
   };
 
-  const saveItem = async () => {
+  const applyItemDialog = () => {
     if (!itemForm.label.trim()) {
       notify('Bitte einen Titel eingeben.', { type: 'warning' });
       return;
     }
-    setSavingItem(true);
-    try {
-      const url = editingItem ? `/api/menuitems/${editingItem.id}` : '/api/menuitems';
-      const method = editingItem ? 'PUT' : 'POST';
-      const body = editingItem ? { ...itemForm, order: editingItem.order } : { ...itemForm, location };
-      const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
-      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Speichern'));
-      notify(editingItem ? 'Menüpunkt gespeichert' : 'Menüpunkt erstellt', { type: 'success' });
-      setItemDialogOpen(false);
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Speichern', { type: 'error' });
-    } finally {
-      setSavingItem(false);
+    const form = { ...itemForm, label: itemForm.label.trim(), url: itemForm.url.trim() };
+    if (editingItem) {
+      setItems((prev) => prev.map((i) => (i.id === editingItem.id ? { ...i, ...form } : i)));
+    } else {
+      setItems((prev) => [...prev, newItem(form)]);
     }
+    setItemDialogOpen(false);
   };
 
-  const deleteItem = async (item: ItemRow) => {
-    const confirmMsg = location === 'header'
-      ? `"${item.label}" und alle seine Untermenüpunkte wirklich löschen?`
-      : `"${item.label}" wirklich aus dem Footer löschen?`;
-    if (!window.confirm(confirmMsg)) return;
-    try {
-      const res = await fetch(`/api/menuitems/${item.id}`, { method: 'DELETE', headers: authHeaders() });
-      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Löschen'));
-      notify('Menüpunkt gelöscht', { type: 'success' });
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Löschen', { type: 'error' });
-    }
+  const deleteItem = (item: ItemRow) => {
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
   };
 
-  const togglePublishedItem = async (item: ItemRow) => {
+  const togglePublishedItem = (item: ItemRow) => {
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, published: !i.published } : i)));
-    try {
-      await fetch(`/api/menuitems/${item.id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ label: item.label, url: item.url, target: item.target, published: !item.published, order: item.order }),
-      });
-      fetchPublishStatus();
-    } catch {
-      notify('Fehler beim Aktualisieren', { type: 'error' });
-      fetchItems();
-    }
-  };
-
-  const moveItem = async (from: number, to: number) => {
-    if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return;
-    const next = [...items];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setItems(next);
-    try {
-      await fetch('/api/menuitems/reorder', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(next.map((i, idx) => ({ id: i.id, order: idx }))),
-      });
-      fetchPublishStatus();
-    } catch {
-      notify('Fehler beim Sortieren', { type: 'error' });
-      fetchItems();
-    }
-  };
-
-  // Drag a top-level item onto another top-level item's row (the middle
-  // band, see computeDropMode below) to make it a sub-item of that item
-  // instead of reordering it. Rejected server-side (with a clear message)
-  // if the dragged item has its own sub-items already, since this menu is
-  // only 2 levels deep.
-  const nestItemUnder = async (source: ItemRow, target: ItemRow) => {
-    try {
-      const res = await fetch(`/api/menuitems/${source.id}/nest`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ targetId: target.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || describeApiError(res, 'Fehler beim Verschachteln'));
-      notify(`"${source.label}" ist jetzt ein Untermenüpunkt von "${target.label}"`, { type: 'success' });
-      setExpanded((prev) => ({ ...prev, [target.id]: true }));
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Verschachteln', { type: 'error' });
-    }
-  };
-
-  // Drag a sub-item onto a DIFFERENT top-level item's row to move it into
-  // that item's sub-items instead of its current parent's.
-  const reparentSubItem = async (source: { parentId: string; index: number }, target: ItemRow) => {
-    const parent = items.find((i) => i.id === source.parentId);
-    const sub = parent?.subItems[source.index];
-    if (!sub) return;
-    try {
-      const res = await fetch(`/api/menusubitems/${sub.id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          label: sub.label, url: sub.url, target: sub.target, imageUrl: sub.imageUrl || '',
-          published: sub.published, order: target.subItems.length, menuItemId: target.id,
-        }),
-      });
-      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Verschieben'));
-      notify(`"${sub.label}" wurde zu "${target.label}" verschoben`, { type: 'success' });
-      setExpanded((prev) => ({ ...prev, [target.id]: true }));
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Verschieben', { type: 'error' });
-    }
-  };
-
-  // The reverse of nestItemUnder: pulls a sub-item back out to become its
-  // own top-level item. Triggered from a button on the sub-item row rather
-  // than a drag gesture (there's no obvious empty drop zone to drag it
-  // onto), but shares the same backend "un-nest" idea.
-  const promoteSubItem = async (sub: SubItemRow) => {
-    try {
-      const res = await fetch(`/api/menusubitems/${sub.id}/promote`, { method: 'POST', headers: authHeaders() });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || describeApiError(res, 'Fehler beim Verschieben'));
-      notify(`"${sub.label}" ist jetzt ein eigener Menüpunkt`, { type: 'success' });
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Verschieben', { type: 'error' });
-    }
-  };
-
-  // Where within a top-level row the pointer is decides what dropping there
-  // does: top/bottom edge = reorder before/after, middle band = nest into
-  // it. A sub-item being dragged always means "nest here" (there's no
-  // "reorder top-level items around a sub-item" concept), and the footer
-  // tab never nests (footer is a flat list), so both skip the band split.
-  const computeDropMode = (e: DragEvent<HTMLElement>): 'before' | 'after' | 'into' => {
-    if (dragSubItem || location === 'footer') return dragSubItem ? 'into' : 'before';
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientY - rect.top) / rect.height;
-    if (ratio < 0.25) return 'before';
-    if (ratio > 0.75) return 'after';
-    return 'into';
   };
 
   // --- Sub-items ---
@@ -542,6 +677,8 @@ export const MenuManager = () => {
     setSubDialogOpen(true);
   };
 
+  // The image file itself has to be uploaded to get a URL, but the menu
+  // entry only remembers it once "Speichern" is clicked.
   const uploadSubItemImage = async (file: File) => {
     setUploadingSubItemImage(true);
     try {
@@ -566,81 +703,65 @@ export const MenuManager = () => {
     }
   };
 
-  const saveSubItem = async () => {
+  const applySubItemDialog = () => {
     if (!subItemForm.label.trim() || !subParentId) {
       notify('Bitte einen Titel eingeben.', { type: 'warning' });
       return;
     }
-    setSavingSubItem(true);
-    try {
-      const url = editingSubItem ? `/api/menusubitems/${editingSubItem.id}` : '/api/menusubitems';
-      const method = editingSubItem ? 'PUT' : 'POST';
-      const body = editingSubItem
-        ? { ...subItemForm, order: editingSubItem.order }
-        : { ...subItemForm, menuItemId: subParentId };
-      const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
-      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Speichern'));
-      notify(editingSubItem ? 'Untermenüpunkt gespeichert' : 'Untermenüpunkt erstellt', { type: 'success' });
-      setSubDialogOpen(false);
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Speichern', { type: 'error' });
-    } finally {
-      setSavingSubItem(false);
-    }
-  };
-
-  const deleteSubItem = async (sub: SubItemRow) => {
-    if (!window.confirm(`"${sub.label}" wirklich löschen?`)) return;
-    try {
-      const res = await fetch(`/api/menusubitems/${sub.id}`, { method: 'DELETE', headers: authHeaders() });
-      if (!res.ok) throw new Error(describeApiError(res, 'Fehler beim Löschen'));
-      notify('Untermenüpunkt gelöscht', { type: 'success' });
-      fetchItems();
-    } catch (e: any) {
-      notify(e.message || 'Fehler beim Löschen', { type: 'error' });
-    }
-  };
-
-  const togglePublishedSubItem = async (sub: SubItemRow) => {
+    const form = { ...subItemForm, label: subItemForm.label.trim(), url: subItemForm.url.trim() };
     setItems((prev) =>
-      prev.map((i) => ({
-        ...i,
-        subItems: i.subItems.map((s) => (s.id === sub.id ? { ...s, published: !s.published } : s)),
-      }))
+      prev.map((i) => {
+        if (i.id !== subParentId) return i;
+        if (editingSubItem) {
+          return { ...i, subItems: i.subItems.map((s) => (s.id === editingSubItem.id ? { ...s, ...form, imageUrl: form.imageUrl || null } : s)) };
+        }
+        return { ...i, subItems: [...i.subItems, newSub(i.id, form)] };
+      })
     );
-    try {
-      await fetch(`/api/menusubitems/${sub.id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ label: sub.label, url: sub.url, target: sub.target, published: !sub.published, order: sub.order }),
-      });
-      fetchPublishStatus();
-    } catch {
-      notify('Fehler beim Aktualisieren', { type: 'error' });
-      fetchItems();
-    }
+    setExpanded((prev) => ({ ...prev, [subParentId]: true }));
+    setSubDialogOpen(false);
   };
 
-  const moveSubItem = async (parentId: string, from: number, to: number) => {
-    const parent = items.find((i) => i.id === parentId);
-    if (!parent || from === to || from < 0 || to < 0 || from >= parent.subItems.length || to >= parent.subItems.length) return;
-    const nextSubs = [...parent.subItems];
-    const [moved] = nextSubs.splice(from, 1);
-    nextSubs.splice(to, 0, moved);
-    setItems((prev) => prev.map((i) => (i.id === parentId ? { ...i, subItems: nextSubs } : i)));
-    try {
-      await fetch('/api/menusubitems/reorder', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(nextSubs.map((s, idx) => ({ id: s.id, order: idx }))),
-      });
-      fetchPublishStatus();
-    } catch {
-      notify('Fehler beim Sortieren', { type: 'error' });
-      fetchItems();
-    }
+  const deleteSubItem = (parentId: string, sub: SubItemRow) => {
+    setItems((prev) => prev.map((i) => (i.id === parentId ? { ...i, subItems: i.subItems.filter((s) => s.id !== sub.id) } : i)));
   };
+
+  const togglePublishedSubItem = (parentId: string, sub: SubItemRow) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === parentId ? { ...i, subItems: i.subItems.map((s) => (s.id === sub.id ? { ...s, published: !s.published } : s)) } : i))
+    );
+  };
+
+  // "Seite auswählen" in both dialogs: fills URL (and the title, if still
+  // empty) from an existing page instead of typing it by hand.
+  // Searchable with the same German/English matching as the left picker.
+  const pagePicker = (onPick: (p: PageOption) => void) => (
+    <Autocomplete
+      options={pageOptions}
+      value={null}
+      blurOnSelect
+      getOptionLabel={(p) => p.label}
+      isOptionEqualToValue={(a, b) => a.key === b.key}
+      filterOptions={(opts, { inputValue }) => searchPages(opts, inputValue, searchPairs)}
+      noOptionsText="Keine passende Seite gefunden"
+      onChange={(_, p) => { if (p) onPick(p); }}
+      renderOption={(props, p) => (
+        <li {...props} key={p.key}>
+          {p.label}
+          <Typography component="span" variant="caption" sx={{ color: '#999', ml: 1 }}>{p.url}</Typography>
+        </li>
+      )}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label="Seite suchen / auswählen (optional)"
+          helperText="Übernimmt URL und Titel einer bestehenden Seite - oder unten eine eigene URL eingeben."
+        />
+      )}
+    />
+  );
+
+  const showDropZones = !!drag;
 
   return (
     <Box sx={{ p: 2 }}>
@@ -659,52 +780,17 @@ export const MenuManager = () => {
         </Alert>
       )}
 
-      <Tabs value={location} onChange={(_, v) => { setLocation(v); setExpanded({}); }} sx={{ mb: 2, borderBottom: '1px solid #e0e0e0' }}>
+      <Tabs value={location} onChange={(_, v) => switchLocation(v)} sx={{ mb: 2, borderBottom: '1px solid #e0e0e0' }}>
         <Tab label="Header" value="header" />
         <Tab label="Footer" value="footer" />
       </Tabs>
 
-      {/* Every edit below (drag, toggle, add/edit/delete, nest/promote)
-          saves immediately - but only to the working menu, not the live
-          site. The live header/footer only picks up those changes once
-          "Speichern" here publishes them (see loadPublicTree in
-          menu.routes.ts), so an admin can freely rearrange things without
-          it going live mid-edit. */}
-      <Paper
-        variant="outlined"
-        sx={{
-          display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, mb: 2,
-          bgcolor: dirty ? '#fff8e1' : '#f6f8f6',
-          borderColor: dirty ? '#f0c14b' : undefined,
-        }}
-      >
-        <Typography variant="body2" sx={{ flex: 1, color: dirty ? '#8a6d1f' : '#557a5e' }}>
-          {dirty
-            ? (location === 'header' ? 'Das Hauptmenü hat ungespeicherte Änderungen - auf der Webseite ist noch der zuletzt veröffentlichte Stand zu sehen.' : 'Der Footer hat ungespeicherte Änderungen - auf der Webseite ist noch der zuletzt veröffentlichte Stand zu sehen.')
-            : (publishedAt ? 'Veröffentlicht.' : 'Noch nichts veröffentlicht.')}
-        </Typography>
-        <Button
-          variant="contained"
-          color={dirty ? 'warning' : 'success'}
-          size="small"
-          onClick={publishMenu}
-          disabled={publishing || !dirty}
-        >
-          {publishing ? 'Wird veröffentlicht...' : (location === 'header' ? 'Menü veröffentlichen' : 'Footer veröffentlichen')}
-        </Button>
-      </Paper>
-
       {/* Kontaktangaben am Ende des mobilen Menüs (Header.tsx's Sidebar-Menü,
-          unter der Navigation) - Name/Adresse/Telefon/E-Mail waren bisher
-          fest im Code hinterlegt. Speichert sofort (kein Entwurf/
-          Veröffentlichen-Mechanismus wie bei der Menüstruktur oben), da es
+          unter der Navigation) - hat einen eigenen Speichern-Button, da es
           nur dieses eine Feld-Set ist. */}
       {location === 'header' && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>Kontaktangaben im mobilen Menü</Typography>
-          <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-            Wird unten im aufklappbaren Menü auf dem Handy angezeigt (unter den Menüpunkten, über den Social-Icons).
-          </Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Kontaktangaben im mobilen Menü</Typography>
           {contactLoading ? (
             <Typography variant="body2" sx={{ color: '#999' }}>Lädt...</Typography>
           ) : (
@@ -747,9 +833,9 @@ export const MenuManager = () => {
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexDirection: { xs: 'column', md: 'row' } }}>
 
         {/* Left panel - "Menüpunkt hinzufügen", mirrors WordPress's Appearance > Menus
-            "Add menu items" panel: pick existing pages or type a custom link, then
-            choose whether it becomes a new top-level entry or a sub-item of an
-            existing one (header only - the footer is always a flat list). */}
+            "Add menu items" panel: tick pages and add them, or drag a page
+            straight into the Menüstruktur (onto an item's middle = as its
+            Untermenüpunkt). */}
         <Paper variant="outlined" sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, p: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>Menüpunkt hinzufügen</Typography>
 
@@ -757,14 +843,48 @@ export const MenuManager = () => {
             <DescriptionIcon fontSize="small" sx={{ color: '#666' }} />
             <Typography variant="body2" sx={{ fontWeight: 600 }}>Seiten</Typography>
           </Box>
-          <Box sx={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px', mb: 1.5 }}>
-            {pageOptions.length === 0 && (
-              <Typography variant="body2" sx={{ color: '#999', p: 1.5 }}>Keine Seiten gefunden.</Typography>
+          <TextField
+            fullWidth size="small" placeholder="Seite suchen / Search page"
+            value={pageSearch}
+            onChange={(e) => setPageSearch(e.target.value)}
+            sx={{ mb: 1 }}
+            slotProps={{
+              input: {
+                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                endAdornment: pageSearch ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setPageSearch('')}><CloseIcon fontSize="small" /></IconButton>
+                  </InputAdornment>
+                ) : undefined,
+              },
+            }}
+          />
+          <Box sx={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px', mb: 1.5 }}>
+            {visiblePageOptions.length === 0 && (
+              <Typography variant="body2" sx={{ color: '#999', p: 1.5 }}>
+                {pageSearch ? 'Keine passende Seite gefunden.' : 'Keine Seiten gefunden.'}
+              </Typography>
             )}
-            {pageOptions.map((p) => (
-              <Box key={p.key} sx={{ display: 'flex', alignItems: 'center', px: 0.5 }}>
+            {visiblePageOptions.map((p) => (
+              <Box
+                key={p.key}
+                draggable
+                onDragStart={(e) => {
+                  // Dragging a ticked page drags all ticked pages together.
+                  const entries = selectedPageKeys.has(p.key)
+                    ? pageOptions.filter((o) => selectedPageKeys.has(o.key)).map((o) => ({ label: o.label, url: o.url }))
+                    : [{ label: p.label, url: p.url }];
+                  startDrag(e, { kind: 'page', entries });
+                }}
+                onDragEnd={endDrag}
+                sx={{ display: 'flex', alignItems: 'center', px: 0.5, cursor: 'grab', '&:hover': { bgcolor: '#f7f7f7' } }}
+              >
+                <DragIndicatorIcon sx={{ color: '#ccc' }} fontSize="small" />
                 <Checkbox size="small" checked={selectedPageKeys.has(p.key)} onChange={() => togglePageSelected(p.key)} />
-                <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</Typography>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</Typography>
+                  <Typography variant="caption" sx={{ color: '#999', display: 'block', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.url}</Typography>
+                </Box>
               </Box>
             ))}
           </Box>
@@ -772,9 +892,9 @@ export const MenuManager = () => {
           <Button
             fullWidth variant="outlined" size="small"
             onClick={addSelectedPages}
-            disabled={addingSelected || selectedPageKeys.size === 0}
+            disabled={selectedPageKeys.size === 0}
           >
-            {addingSelected ? 'Wird hinzugefügt...' : 'Zum Menü hinzufügen'}
+            Zum Menü hinzufügen
           </Button>
 
           <Divider sx={{ my: 2 }} />
@@ -796,14 +916,13 @@ export const MenuManager = () => {
           <Button
             fullWidth variant="outlined" size="small"
             onClick={addCustomLink}
-            disabled={addingCustomLink || !customLinkLabel.trim() || !customLinkUrl.trim()}
+            disabled={!customLinkLabel.trim() || !customLinkUrl.trim()}
           >
-            {addingCustomLink ? 'Wird hinzugefügt...' : 'Zum Menü hinzufügen'}
+            Zum Menü hinzufügen
           </Button>
         </Paper>
 
-        {/* Right panel - "Menüstruktur": the current ordered/nested tree, drag to
-            reorder within a level, expand a header item to manage its sub-items. */}
+        {/* Right panel - "Menüstruktur": the current ordered/nested tree. */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Menüstruktur</Typography>
@@ -811,150 +930,181 @@ export const MenuManager = () => {
               {location === 'header' ? 'Manueller Eintrag' : 'Manueller Footer-Link'}
             </Button>
           </Box>
-          {location === 'header' && !loading && items.length > 0 && (
-            <Typography variant="body2" sx={{ color: '#999', mb: 1 }}>
-              Tipp: einen Menüpunkt auf die Mitte eines anderen ziehen, um ihn zu dessen Untermenüpunkt zu machen - auf den oberen/unteren Rand ziehen, um nur die Reihenfolge zu ändern.
+          {/* Nothing in the Menüstruktur is saved until "Speichern" is
+              clicked - that single click writes the whole menu and puts it
+              live (POST /menu/save). */}
+          <Paper
+            variant="outlined"
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, mb: 1,
+              bgcolor: dirty ? '#fff8e1' : '#f6f8f6',
+              borderColor: dirty ? '#f0c14b' : undefined,
+            }}
+          >
+            <Typography variant="body2" sx={{ flex: 1, color: dirty ? '#8a6d1f' : '#557a5e' }}>
+              {localDirty
+                ? 'Ungespeicherte Änderungen - erst nach Klick auf "Speichern" übernommen.'
+                : serverDirty
+                ? 'Die Webseite zeigt noch einen älteren Stand.'
+                : (publishedAt ? 'Alle Änderungen gespeichert.' : 'Noch nichts gespeichert.')}
             </Typography>
-          )}
+            {localDirty && (
+              <Button size="small" onClick={discardChanges} disabled={saving}>Verwerfen</Button>
+            )}
+            <Button
+              variant="contained"
+              color={dirty ? 'warning' : 'success'}
+              size="small"
+              onClick={saveMenu}
+              disabled={saving || !dirty}
+            >
+              {saving ? 'Wird gespeichert...' : 'Speichern'}
+            </Button>
+          </Paper>
 
           {loading && items.length === 0 && (
             <Typography sx={{ mt: 3, color: '#999' }}>Lädt...</Typography>
           )}
 
-          {!loading && items.length === 0 && (
+          {!loading && items.length === 0 && !showDropZones && (
             <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', color: '#999', mt: 2 }}>
               {location === 'header' ? 'Noch keine Menüpunkte vorhanden.' : 'Noch keine Footer-Links vorhanden.'}
             </Paper>
           )}
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
-        {items.map((item, index) => (
-          <Paper
-            key={item.id}
-            variant="outlined"
-            draggable
-            onDragStart={() => setDragItemIndex(index)}
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (dragItemIndex === index) return;
-              setOverTarget({ index, mode: computeDropMode(e) });
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const mode = computeDropMode(e);
-              if (dragSubItem) {
-                if (dragSubItem.parentId !== item.id) reparentSubItem(dragSubItem, item);
-              } else if (dragItemIndex !== null && dragItemIndex !== index) {
-                if (mode === 'into') nestItemUnder(items[dragItemIndex], item);
-                else moveItem(dragItemIndex, index);
-              }
-              setDragItemIndex(null);
-              setDragSubItem(null);
-              setOverTarget(null);
-            }}
-            onDragEnd={() => { setDragItemIndex(null); setDragSubItem(null); setOverTarget(null); }}
-            sx={{
-              opacity: dragItemIndex === index ? 0.4 : 1,
-              transition: 'box-shadow 0.1s, background-color 0.1s',
-              ...(overTarget?.index === index && overTarget.mode === 'into'
-                ? { boxShadow: (t) => `inset 0 0 0 2px ${t.palette.primary.main}`, bgcolor: 'action.hover' }
-                : overTarget?.index === index && overTarget.mode === 'before'
-                ? { boxShadow: (t) => `inset 0 2px 0 0 ${t.palette.primary.main}` }
-                : overTarget?.index === index && overTarget.mode === 'after'
-                ? { boxShadow: (t) => `inset 0 -2px 0 0 ${t.palette.primary.main}` }
-                : {}),
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5 }}>
-              <DragIndicatorIcon sx={{ color: '#aaa', cursor: 'grab' }} fontSize="small" />
-              {location === 'header' && (
-                <IconButton size="small" onClick={() => toggleExpanded(item.id)}>
-                  {expanded[item.id] ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
-                </IconButton>
-              )}
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.label}</Typography>
-                <Typography variant="body2" sx={{ color: '#666' }}>
-                  <span>{item.url || '—'}</span>
-                  {location === 'header' && item.subItems.length > 0 && (
-                    <span>{` · ${item.subItems.length} Untermenüpunkt${item.subItems.length === 1 ? '' : 'e'}`}</span>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
+            {items.map((item) => (
+              <Paper
+                key={item.id}
+                variant="outlined"
+                sx={{ opacity: drag?.kind === 'item' && drag.id === item.id ? 0.4 : 1 }}
+              >
+                <Box
+                  draggable
+                  onDragStart={(e) => startDrag(e, { kind: 'item', id: item.id })}
+                  onDragEnd={endDrag}
+                  onDragOver={(e) => handleDragOver(e, { parentId: null, targetId: item.id, mode: topRowMode(e) })}
+                  onDrop={(e) => handleDrop(e, { parentId: null, targetId: item.id, mode: topRowMode(e) })}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 1, p: 1.5, borderRadius: 1,
+                    transition: 'box-shadow 0.1s, background-color 0.1s',
+                    ...indicatorSx(null, item.id),
+                  }}
+                >
+                  <DragIndicatorIcon sx={{ color: '#aaa', cursor: 'grab' }} fontSize="small" />
+                  {location === 'header' && (
+                    <IconButton size="small" onClick={() => toggleExpanded(item.id)}>
+                      {isExpanded(item.id) ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                    </IconButton>
                   )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.label}</Typography>
+                    <Typography variant="body2" sx={{ color: '#666' }}>
+                      <span>{item.url || '—'}</span>
+                      {location === 'header' && item.subItems.length > 0 && (
+                        <span>{` · ${item.subItems.length} Untermenüpunkt${item.subItems.length === 1 ? '' : 'e'}`}</span>
+                      )}
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    sx={{ mr: 0 }}
+                    control={<Switch size="small" checked={item.published} onChange={() => togglePublishedItem(item)} />}
+                    label={<Typography variant="body2">Aktiv</Typography>}
+                  />
+                  <IconButton size="small" onClick={() => openEditItem(item)} title="Bearbeiten"><EditIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => deleteItem(item)} title="Löschen"><DeleteIcon fontSize="small" color="error" /></IconButton>
+                </Box>
+
+                {/* Always mounted (never conditionally removed from the tree) so
+                    switching the Header/Footer tab can't yank this out mid-
+                    animation while `in` is still true - that abrupt unmount is
+                    what crashes Collapse/react-transition-group with a
+                    "removeChild" DOM error. */}
+                <Collapse in={isExpanded(item.id)} timeout="auto" unmountOnExit>
+                  <Box sx={{ pl: 6, pr: 2, pb: 2 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {item.subItems.map((sub) => (
+                        <Box
+                          key={sub.id}
+                          draggable
+                          onDragStart={(e) => startDrag(e, { kind: 'sub', parentId: item.id, id: sub.id })}
+                          onDragEnd={endDrag}
+                          onDragOver={(e) => handleDragOver(e, { parentId: item.id, targetId: sub.id, mode: subRowMode(e) })}
+                          onDrop={(e) => handleDrop(e, { parentId: item.id, targetId: sub.id, mode: subRowMode(e) })}
+                          sx={{
+                            display: 'flex', alignItems: 'center', gap: 1, p: 1,
+                            border: '1px solid #eee', borderRadius: '6px', bgcolor: '#fff',
+                            opacity: drag?.kind === 'sub' && drag.id === sub.id ? 0.4 : 1,
+                            ...indicatorSx(item.id, sub.id),
+                          }}
+                        >
+                          <DragIndicatorIcon sx={{ color: '#ccc', cursor: 'grab' }} fontSize="small" />
+                          {sub.imageUrl && (
+                            <Box component="img" src={sub.imageUrl} alt="" sx={{ width: 36, height: 36, objectFit: 'cover', borderRadius: '4px', border: '1px solid #e0e0e0' }} />
+                          )}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{sub.label}</Typography>
+                            <Typography variant="caption" sx={{ color: '#888' }}>{sub.url || '—'}</Typography>
+                          </Box>
+                          <Switch size="small" checked={sub.published} onChange={() => togglePublishedSubItem(item.id, sub)} />
+                          <IconButton size="small" onClick={() => openEditSubItem(item.id, sub)} title="Bearbeiten"><EditIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => deleteSubItem(item.id, sub)} title="Löschen"><DeleteIcon fontSize="small" color="error" /></IconButton>
+                        </Box>
+                      ))}
+                      {/* Append-at-the-end drop zone - also the only drop
+                          target when an item has no sub-items yet. */}
+                      {(item.subItems.length === 0 || showDropZones) && (
+                        <Box
+                          onDragOver={(e) => handleDragOver(e, { parentId: item.id, targetId: null, mode: 'end' })}
+                          onDrop={(e) => handleDrop(e, { parentId: item.id, targetId: null, mode: 'end' })}
+                          sx={{
+                            p: 1, border: '1px dashed #ccc', borderRadius: '6px', textAlign: 'center',
+                            ...indicatorSx(item.id, null),
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: '#999' }}>
+                            {showDropZones ? 'Hierher ziehen, um als Untermenüpunkt einzufügen' : 'Keine Untermenüpunkte - Seite oder Menüpunkt hierher ziehen'}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    <Button size="small" startIcon={<AddIcon />} sx={{ mt: 1 }} onClick={() => openCreateSubItem(item.id)}>
+                      Untermenüpunkt hinzufügen
+                    </Button>
+                  </Box>
+                </Collapse>
+              </Paper>
+            ))}
+
+            {/* Top-level append zone - shown while dragging, so a sub-item or
+                page can be dropped at the very end of the menu. */}
+            {showDropZones && (
+              <Box
+                onDragOver={(e) => handleDragOver(e, { parentId: null, targetId: null, mode: 'end' })}
+                onDrop={(e) => handleDrop(e, { parentId: null, targetId: null, mode: 'end' })}
+                sx={{
+                  p: 2, border: '2px dashed #ccc', borderRadius: '6px', textAlign: 'center',
+                  ...indicatorSx(null, null),
+                }}
+              >
+                <Typography variant="body2" sx={{ color: '#999' }}>
+                  {location === 'header' ? 'Hierher ziehen, um als eigenen Menüpunkt am Ende einzufügen' : 'Hierher ziehen, um am Ende einzufügen'}
                 </Typography>
               </Box>
-              <FormControlLabel
-                sx={{ mr: 0 }}
-                control={<Switch size="small" checked={item.published} onChange={() => togglePublishedItem(item)} />}
-                label={<Typography variant="body2">Aktiv</Typography>}
-              />
-              <IconButton size="small" onClick={() => openEditItem(item)} title="Bearbeiten"><EditIcon fontSize="small" /></IconButton>
-              <IconButton size="small" onClick={() => deleteItem(item)} title="Löschen"><DeleteIcon fontSize="small" color="error" /></IconButton>
-            </Box>
-
-            {/* Always mounted (never conditionally removed from the tree) so
-                switching the Header/Footer tab can't yank this out mid-
-                animation while `in` is still true - that abrupt unmount is
-                what crashes Collapse/react-transition-group with a
-                "removeChild" DOM error. `in` itself already stays false for
-                footer items since the expand chevron above is header-only. */}
-            <Collapse in={location === 'header' && !!expanded[item.id]} timeout="auto" unmountOnExit>
-              <Box sx={{ pl: 6, pr: 2, pb: 2 }}>
-                {item.subItems.length === 0 && (
-                  <Typography variant="body2" sx={{ color: '#999', mb: 1 }}>Keine Untermenüpunkte.</Typography>
-                )}
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  {item.subItems.map((sub, subIndex) => (
-                    <Box
-                      key={sub.id}
-                      draggable
-                      onDragStart={(e) => { e.stopPropagation(); setDragSubItem({ parentId: item.id, index: subIndex }); }}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (dragSubItem && dragSubItem.parentId === item.id) moveSubItem(item.id, dragSubItem.index, subIndex);
-                        setDragSubItem(null);
-                      }}
-                      onDragEnd={(e) => { e.stopPropagation(); setDragSubItem(null); }}
-                      sx={{
-                        display: 'flex', alignItems: 'center', gap: 1, p: 1,
-                        border: '1px solid #eee', borderRadius: '6px',
-                        opacity: dragSubItem?.parentId === item.id && dragSubItem.index === subIndex ? 0.4 : 1,
-                      }}
-                    >
-                      <DragIndicatorIcon sx={{ color: '#ccc', cursor: 'grab' }} fontSize="small" />
-                      {sub.imageUrl && (
-                        <Box component="img" src={sub.imageUrl} alt="" sx={{ width: 36, height: 36, objectFit: 'cover', borderRadius: '4px', border: '1px solid #e0e0e0' }} />
-                      )}
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>{sub.label}</Typography>
-                        <Typography variant="caption" sx={{ color: '#888' }}>{sub.url || '—'}</Typography>
-                      </Box>
-                      <Switch size="small" checked={sub.published} onChange={() => togglePublishedSubItem(sub)} />
-                      <IconButton size="small" onClick={() => promoteSubItem(sub)} title="Zu eigenem Menüpunkt machen"><ArrowUpwardIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" onClick={() => openEditSubItem(item.id, sub)} title="Bearbeiten"><EditIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" onClick={() => deleteSubItem(sub)} title="Löschen"><DeleteIcon fontSize="small" color="error" /></IconButton>
-                    </Box>
-                  ))}
-                </Box>
-                <Button size="small" startIcon={<AddIcon />} sx={{ mt: 1 }} onClick={() => openCreateSubItem(item.id)}>
-                  Untermenüpunkt hinzufügen
-                </Button>
-              </Box>
-            </Collapse>
-          </Paper>
-        ))}
-      </Box>
+            )}
+          </Box>
         </Box>
       </Box>
 
-      {/* Top-level item dialog */}
+      {/* Top-level item dialog - applies to the local draft only. */}
       <Dialog open={itemDialogOpen} onClose={() => setItemDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           {location === 'header'
             ? (editingItem ? 'Menüpunkt bearbeiten' : 'Neuer Menüpunkt')
             : (editingItem ? 'Footer-Link bearbeiten' : 'Neuer Footer-Link')}
         </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+          {pagePicker((p) => setItemForm((prev) => ({ ...prev, url: p.url, label: prev.label.trim() ? prev.label : p.label })))}
           <TextField
             label="Titel" fullWidth autoFocus
             value={itemForm.label}
@@ -966,29 +1116,18 @@ export const MenuManager = () => {
             value={itemForm.url}
             onChange={(e) => setItemForm({ ...itemForm, url: e.target.value })}
           />
-          <TextField
-            select label="Öffnen in" fullWidth
-            value={itemForm.target}
-            onChange={(e) => setItemForm({ ...itemForm, target: e.target.value })}
-          >
-            <SelectMenuItem value="_self">Gleicher Tab</SelectMenuItem>
-            <SelectMenuItem value="_blank">Neuer Tab</SelectMenuItem>
-          </TextField>
-          <FormControlLabel
-            control={<Switch checked={itemForm.published} onChange={(e) => setItemForm({ ...itemForm, published: e.target.checked })} />}
-            label="Aktiv (im Menü sichtbar)"
-          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setItemDialogOpen(false)}>Abbrechen</Button>
-          <Button variant="contained" onClick={saveItem} disabled={savingItem}>Speichern</Button>
+          <Button variant="contained" onClick={applyItemDialog}>Übernehmen</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Sub-item dialog */}
+      {/* Sub-item dialog - applies to the local draft only. */}
       <Dialog open={subDialogOpen} onClose={() => setSubDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{editingSubItem ? 'Untermenüpunkt bearbeiten' : 'Neuer Untermenüpunkt'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+          {pagePicker((p) => setSubItemForm((prev) => ({ ...prev, url: p.url, label: prev.label.trim() ? prev.label : p.label })))}
           <TextField
             label="Titel" fullWidth autoFocus
             value={subItemForm.label}
@@ -1000,19 +1139,7 @@ export const MenuManager = () => {
             value={subItemForm.url}
             onChange={(e) => setSubItemForm({ ...subItemForm, url: e.target.value })}
           />
-          <TextField
-            select label="Öffnen in" fullWidth
-            value={subItemForm.target}
-            onChange={(e) => setSubItemForm({ ...subItemForm, target: e.target.value })}
-          >
-            <SelectMenuItem value="_self">Gleicher Tab</SelectMenuItem>
-            <SelectMenuItem value="_blank">Neuer Tab</SelectMenuItem>
-          </TextField>
-
           <Box>
-            <Typography variant="body2" sx={{ mb: 1, color: '#555' }}>
-              Bild (optional - wenn ALLE Untermenüpunkte eines Menüpunkts ein Bild haben, wird dieser als Bilder-Menü wie "Reisen" dargestellt)
-            </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               {subItemForm.imageUrl ? (
                 <Box sx={{ position: 'relative' }}>
@@ -1045,15 +1172,10 @@ export const MenuManager = () => {
               />
             </Box>
           </Box>
-
-          <FormControlLabel
-            control={<Switch checked={subItemForm.published} onChange={(e) => setSubItemForm({ ...subItemForm, published: e.target.checked })} />}
-            label="Aktiv (im Menü sichtbar)"
-          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSubDialogOpen(false)}>Abbrechen</Button>
-          <Button variant="contained" onClick={saveSubItem} disabled={savingSubItem}>Speichern</Button>
+          <Button variant="contained" onClick={applySubItemDialog} disabled={uploadingSubItemImage}>Übernehmen</Button>
         </DialogActions>
       </Dialog>
     </Box>
