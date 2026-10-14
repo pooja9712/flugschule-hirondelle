@@ -379,7 +379,18 @@ export const EventDatesManager = () => {
                                 </TableCell>
                                 <TableCell align="right">
                                     <Tooltip title="Bearbeiten">
-                                        <IconButton size="small" onClick={() => navigate(`/admin/events/${encodeURIComponent(d.id)}${currentTabSuffix}`)}>
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => {
+                                                // A plain client-side navigate() here (react-router, inside the
+                                                // same mounted <Edit>/<TabbedForm> tree) left the page blank for
+                                                // a sibling date - react-admin's record/tab state didn't reliably
+                                                // reset for the new id. A full browser navigation re-mounts
+                                                // everything from scratch, the same proven path as opening any
+                                                // event edit page for the first time.
+                                                window.location.href = `/admin/events/${encodeURIComponent(d.id)}${currentTabSuffix}`;
+                                            }}
+                                        >
                                             <EditIcon fontSize="small" />
                                         </IconButton>
                                     </Tooltip>
