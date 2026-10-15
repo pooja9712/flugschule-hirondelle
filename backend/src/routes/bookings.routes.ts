@@ -239,6 +239,29 @@ async function findBookingIdsForSearch(raw: string): Promise<string[]> {
   return rows.map(r => r.id);
 }
 
+// Internal/test bookings (made by the team itself while testing the live
+// booking flow, not real customers) - hidden from the normal admin Bookings
+// view (list, CSV, participant/signature-list exports all share this same
+// where-clause builder), never deleted. Exact-match only (not a loose
+// "contains"), and the JSON extraction uses utf8mb4_unicode_ci - already
+// case-insensitive, so "Test"/"TEST"/"test" all match "test" - so a real
+// customer can never be caught by this.
+const HIDDEN_TEST_EMAILS = ['test@gmail.com', 'sudhirgaikwad520@gmail.com', 'sudhirgaikwad517@gmail.com'];
+const HIDDEN_TEST_NAMES = ['test', 'test kunde'];
+
+async function findHiddenTestBookingIds(): Promise<string[]> {
+  const emailConds = HIDDEN_TEST_EMAILS.map((e) =>
+    Prisma.sql`CONVERT(JSON_UNQUOTE(JSON_EXTRACT(b.customerDetails, '$.email')) USING utf8mb4) COLLATE utf8mb4_unicode_ci = ${e}`
+  );
+  const nameConds = HIDDEN_TEST_NAMES.flatMap((n) => [
+    Prisma.sql`CONVERT(JSON_UNQUOTE(JSON_EXTRACT(b.customerDetails, '$.fullName')) USING utf8mb4) COLLATE utf8mb4_unicode_ci = ${n}`,
+    Prisma.sql`CONVERT(JSON_UNQUOTE(JSON_EXTRACT(b.customerDetails, '$.name')) USING utf8mb4) COLLATE utf8mb4_unicode_ci = ${n}`,
+  ]);
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT b.id FROM Booking b WHERE ${Prisma.join([...emailConds, ...nameConds], ' OR ')}`;
+  return rows.map((r) => r.id);
+}
+
 async function buildBookingWhereClause(query: any) {
   const { q, status, eventId, time, ids } = query;
   const whereClause: any = {};
@@ -248,6 +271,9 @@ async function buildBookingWhereClause(query: any) {
     whereClause.id = { in: String(ids).split(',') };
     return whereClause;
   }
+
+  const hiddenIds = await findHiddenTestBookingIds();
+  if (hiddenIds.length) andConditions.push({ id: { notIn: hiddenIds } });
 
   if (q && String(q).trim()) {
     andConditions.push({ id: { in: await findBookingIdsForSearch(String(q)) } });
