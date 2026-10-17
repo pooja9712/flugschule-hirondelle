@@ -379,12 +379,15 @@ const ContentsTabContent = () => (
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
             <MCard title="Veranstaltungs-Anzeige">
+                {/* Old's real "Veranstaltungs-Anzeige" card (layouts/event/
+                    edit/content.php:240-256, COM_MATUKIO_EVENT_DISPLAY) only
+                    ever has top_event/hot_event here - allday/showbegin/
+                    showend/showbooked are date-level fields in old
+                    (layouts/event/edit/dates.php's date-edit form), not
+                    event-level, so they belong in the Termine tab's inline
+                    per-date edit panel (already there), not duplicated here. */}
                 <BooleanInput source="isTopEvent" label="Top-Veranstaltung" />
                 <BooleanInput source="isHotEvent" label="Hot-Event" />
-                <BooleanInput source="allDay" label="Ganztägig / mehrtägig (keine Uhrzeit relevant)" defaultValue={false} />
-                <BooleanInput source="showStartTime" label="Startzeit anzeigen" defaultValue={true} />
-                <BooleanInput source="showEndTime" label="Endzeit anzeigen" defaultValue={true} />
-                <BooleanInput source="showRegistrationDeadline" label="Anmeldeschluss anzeigen" defaultValue={true} />
             </MCard>
             <MCard title="Verschiedenes">
                 <ReferenceInput source="organizerId" reference="organizers" label="Veranstalter">
