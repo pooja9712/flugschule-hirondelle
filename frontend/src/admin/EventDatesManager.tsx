@@ -441,7 +441,7 @@ export const EventDatesManager = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Nummer</TableCell>
-                            <TableCell>Datum</TableCell>
+                            <TableCell>Beginn / Ende / Anmeldeschluss</TableCell>
                             <TableCell>Titel</TableCell>
                             <TableCell>Ort</TableCell>
                             <TableCell align="right">Kapazität</TableCell>
@@ -460,7 +460,30 @@ export const EventDatesManager = () => {
                                 sx={{ borderLeft: `3px solid ${dateStatusColor(d)}` }}
                             >
                                 <TableCell>{d.bookingNumber || '-'}</TableCell>
-                                <TableCell>{new Date(d.startDate).toLocaleString('de-DE')}</TableCell>
+                                <TableCell>
+                                    {/* Old's per-date card (layouts/event/edit/dates.php) shows
+                                        Beginn/Ende/Anmeldeschluss as three separate lines - stacked
+                                        here in one cell instead of three new columns so the
+                                        already-cramped table doesn't get wider. */}
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>Beginn:</Typography>
+                                            <Typography variant="body2">{new Date(d.startDate).toLocaleString('de-DE')}</Typography>
+                                        </Box>
+                                        {d.endDate && (
+                                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>Ende:</Typography>
+                                                <Typography variant="body2">{new Date(d.endDate).toLocaleString('de-DE')}</Typography>
+                                            </Box>
+                                        )}
+                                        {d.registrationDeadline && (
+                                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>Anmeldeschluss:</Typography>
+                                                <Typography variant="body2">{new Date(d.registrationDeadline).toLocaleString('de-DE')}</Typography>
+                                            </Box>
+                                        )}
+                                    </Box>
+                                </TableCell>
                                 <TableCell>{d.titleOverride || d.title}</TableCell>
                                 <TableCell sx={{ maxWidth: 160 }}>
                                     <Tooltip title={d.location || ''}>
