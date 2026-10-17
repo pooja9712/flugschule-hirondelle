@@ -70,6 +70,7 @@ import menuRoutes from './routes/menu.routes'; // NEW - admin-managed header nav
 import legalPagesRoutes from './routes/legalPages.routes';
 import serviceOrdersRoutes from './routes/serviceorders.routes';
 import trackRoutes from './routes/track.routes';
+import mediaRoutes from './routes/media.routes'; // NEW - "Medien" tab (Joomla's Inhalt > Medien / com_media file manager equivalent)
 import path from 'path';
 import 'dotenv/config'; // loads .env variables
 import { raQueryParser } from './middlewares/raCompat.middleware';
@@ -119,6 +120,11 @@ app.use(maintenanceGate);
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+// Serves frontend/public/images LIVE (not frontend/dist/images) so a file the
+// "Medien" admin page just uploaded/deleted is reflected immediately, with no
+// rebuild - registered ahead of the production frontendDist static below so
+// it always wins over whatever was baked into dist/images at the last build.
+app.use('/images', express.static(path.join(process.cwd(), '..', 'frontend', 'public', 'images')));
 
 // Basic health check
 app.get('/api/health', (req, res) => {
@@ -141,6 +147,7 @@ app.use('/api/newsletterautomations', newsletterAutomationsRoutes);
 app.use('/api/newsletterbounces', newsletterBouncesRoutes);
 app.use('/api/newsletterforms', newsletterFormsRoutes);
 app.use('/api/track', trackRoutes);
+app.use('/api/media', mediaRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/commentsettings', commentSettingsRoutes);
 app.use('/api/commentemailqueue', commentEmailQueueRoutes);

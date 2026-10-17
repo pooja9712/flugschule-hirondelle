@@ -37,6 +37,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ExtensionIcon from '@mui/icons-material/Extension'; // NEW - "Komponenten" section icon
 import WebIcon from '@mui/icons-material/Web'; // NEW - "Seiten" link icon
 import MenuIcon from '@mui/icons-material/Menu'; // NEW - "Menü" link icon
+import PermMediaIcon from '@mui/icons-material/PermMedia'; // NEW - "Medien" link icon
 
 // A fully custom sidebar (plain MUI + react-router NavLink, no react-admin
 // <Menu>/<MenuItemLink>) - same approach already used successfully in the
@@ -127,6 +128,9 @@ const COMMENT_ITEMS: Item[] = [
 // data-only editors and any admin-created Unlayer pages) lives here too.
 const COMPONENT_ITEMS: Item[] = [
     { label: 'Menü', to: '/admin/menu', icon: <MenuIcon fontSize="small" /> },
+    // Old's real Joomla "Inhalt > Medien" (com_media) generic file manager -
+    // MediaManager.tsx, rooted at frontend/public/images.
+    { label: 'Medien', to: '/admin/media', icon: <PermMediaIcon fontSize="small" /> },
     { label: 'Galerie', to: '/admin/pagegallery', icon: <ViewCarouselIcon fontSize="small" /> },
     { label: 'Seiten', to: '/admin/pages', icon: <WebIcon fontSize="small" /> },
     { label: 'Flugschule Mailing', to: '/admin/acymailing/dashboard', icon: <EmailIcon fontSize="small" /> },

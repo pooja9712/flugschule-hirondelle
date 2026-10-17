@@ -60,6 +60,7 @@ import { TeamContentEditor } from './TeamContentEditor'; // NEW - /infos/team
 import { GelaendeContentEditor } from './GelaendeContentEditor'; // NEW - /infos/gelaende + its 10 detail pages
 import { WetterContentEditor } from './WetterContentEditor'; // NEW - /infos/wetter
 import { MedienContentEditor } from './MedienContentEditor'; // NEW - /infos/medien
+import { MediaManager } from './MediaManager'; // NEW - "Medien" tab (Joomla's Inhalt > Medien / com_media file manager equivalent)
 import { GruppeneventsContentEditor } from './GruppeneventsContentEditor'; // NEW - /infos/gruppenevents
 import { GutscheineContentEditor } from './GutscheineContentEditor'; // NEW - /infos/gutscheine
 import { VersicherungenContentEditor } from './VersicherungenContentEditor'; // NEW - /infos/versicherungen
@@ -306,6 +307,7 @@ export const AdminApp = () => {
             <Route path="/import" element={<Authenticated><Import /></Authenticated>} />
             <Route path="/ecwid-config" element={<Authenticated><EcwidConfigPage /></Authenticated>} />
             <Route path="/pagemedia" element={<Authenticated><PageMediaConfigPage /></Authenticated>} />
+            <Route path="/media" element={<Authenticated><MediaManager /></Authenticated>} />
             <Route path="/cookie-consent" element={<Authenticated><CookieConsentConfigPage /></Authenticated>} />
             <Route path="/settings-config" element={<Authenticated><SettingsConfigPage /></Authenticated>} />
             <Route path="/comment-settings" element={<Authenticated><CommentSettingsPage /></Authenticated>} />
