@@ -280,7 +280,7 @@ const ClearSearchOnMount = () => {
 const BookingFilter = (props: any) => (
     <Filter {...props}>
         <SearchInput label="Suche (Name, E-Mail, ID)" source="q" alwaysOn />
-        <SelectInput label="Status" source="status" choices={statusChoices} alwaysOn defaultValue="activeandpending" />
+        <SelectInput label="Status" source="status" choices={statusChoices} alwaysOn />
         <EventFilterInput label="Event" source="eventId" alwaysOn />
         <SelectInput label="Zeitraum" source="time" choices={timeChoices} alwaysOn emptyText="Alle Zeiten" />
     </Filter>
@@ -539,7 +539,7 @@ const StatusChip = ({ source, label: _label }: { source?: string, label?: string
 };
 
 export const BookingList = () => (
-    <List filters={<BookingFilter />} sort={{ field: 'createdAt', order: 'DESC' }} actions={false}>
+    <List filters={<BookingFilter />} sort={{ field: 'createdAt', order: 'DESC' }} actions={false} filterDefaultValues={{ status: 'activeandpending' }}>
         {/* We place the actions here inside the List context rather than in the
             actions prop so they can wrap freely. The grid wrapper with minmax(0, 1fr)
             prevents the wide Datagrid from forcing the parent Card to expand horizontally,
