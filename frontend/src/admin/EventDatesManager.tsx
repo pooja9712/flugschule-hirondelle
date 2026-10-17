@@ -359,7 +359,19 @@ export const EventDatesManager = () => {
                                 <TableCell>{d.bookingNumber || '-'}</TableCell>
                                 <TableCell>{new Date(d.startDate).toLocaleString('de-DE')}</TableCell>
                                 <TableCell>{d.titleOverride || d.title}</TableCell>
-                                <TableCell>{d.location || '-'}</TableCell>
+                                <TableCell sx={{ maxWidth: 160 }}>
+                                    <Tooltip title={d.location || ''}>
+                                        <Box
+                                            sx={{
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            {d.location || '-'}
+                                        </Box>
+                                    </Tooltip>
+                                </TableCell>
                                 <TableCell align="right">{d.capacity}</TableCell>
                                 <TableCell align="right">
                                     <Tooltip title="Buchungen dieses Termins ansehen">
@@ -378,6 +390,7 @@ export const EventDatesManager = () => {
                                     <Chip label={d.published ? 'Veröffentlicht' : 'Versteckt'} color={d.published ? 'success' : 'default'} size="small" />
                                 </TableCell>
                                 <TableCell align="right">
+                                  <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'flex-end', alignItems: 'center', gap: 0.25 }}>
                                     <Tooltip title="Bearbeiten">
                                         <IconButton
                                             size="small"
@@ -409,6 +422,7 @@ export const EventDatesManager = () => {
                                             <DeleteIcon fontSize="small" />
                                         </IconButton>
                                     </Tooltip>
+                                  </Box>
                                 </TableCell>
                             </TableRow>
                         ))}
