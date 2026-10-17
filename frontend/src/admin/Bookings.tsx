@@ -66,12 +66,15 @@ async function postBulk(path: string, body: any) {
 
 // --- Filters (mirrors Matukio's search box, "Active or Floating" status
 // dropdown, event dropdown, and time-period dropdown) ---
-// No "Aktiv und ausstehend" / "Alle Zeiten" entries in these lists: the
-// SelectInput's own empty option already stands for them (the backend
-// treats a missing status as active+pending and a missing period as all
-// times) - listing them again showed every such entry twice.
+// No "Alle Zeiten" entry in timeChoices: the SelectInput's own empty option
+// already stands for it (the backend treats a missing period as all times) -
+// listing it again showed that entry twice. Old's filter_status dropdown
+// (views/bookings/tmpl/default.php) has 9 options incl. "Aktiv oder
+// Schwebend" as its own explicit entry (not just the default) - matched here
+// 1:1, same order, same STATUS_PSEUDO-backed 'activeandpending' value.
 const statusChoices = [
     { id: 'all', name: 'Alle' },
+    { id: 'activeandpending', name: 'Aktiv oder Schwebend' },
     { id: 'active', name: 'Bestätigt' },
     { id: 'pending', name: 'Ausstehend' },
     { id: 'waitlist', name: 'Warteliste' },
@@ -263,11 +266,11 @@ const SearchInput = ({ source, label }: { source: string; label: string; alwaysO
 const ClearSearchOnMount = () => {
     const { filterValues, displayedFilters, setFilters } = useListContext();
     useEffect(() => {
-        // Also drop values remembered from before their dropdown entries
-        // were folded into the empty option (see statusChoices).
+        // "activeandpending" is a real, explicit choice again (matches old's
+        // filter_status dropdown 1:1 - see statusChoices) - only "time=all"
+        // still has no explicit entry of its own.
         const { q, ...rest } = filterValues || {};
         let changed = !!q;
-        if (rest.status === 'activeandpending') { delete rest.status; changed = true; }
         if (rest.time === 'all') { delete rest.time; changed = true; }
         if (changed) setFilters(rest, displayedFilters);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -277,7 +280,7 @@ const ClearSearchOnMount = () => {
 const BookingFilter = (props: any) => (
     <Filter {...props}>
         <SearchInput label="Suche (Name, E-Mail, ID)" source="q" alwaysOn />
-        <SelectInput label="Status" source="status" choices={statusChoices} alwaysOn emptyText="Aktiv und ausstehend" />
+        <SelectInput label="Status" source="status" choices={statusChoices} alwaysOn defaultValue="activeandpending" />
         <EventFilterInput label="Event" source="eventId" alwaysOn />
         <SelectInput label="Zeitraum" source="time" choices={timeChoices} alwaysOn emptyText="Alle Zeiten" />
     </Filter>
