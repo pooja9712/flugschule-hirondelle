@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useRecordContext, useNotify, useRefresh } from 'react-admin';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
     Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField as MuiTextField,
     ToggleButtonGroup, ToggleButton, Checkbox, FormControlLabel, Chip, IconButton, Tooltip,
     Table, TableHead, TableRow, TableCell, TableBody, Radio, RadioGroup, FormControl, FormLabel,
-    Typography, CircularProgress
+    Typography, CircularProgress, Switch, Select, MenuItem, InputLabel
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -75,18 +75,6 @@ export const EventDatesManager = () => {
     const notify = useNotify();
     const refresh = useRefresh();
     const navigate = useNavigate();
-    const location = useLocation();
-
-    // react-admin's TabbedForm puts the active tab as a trailing numeric
-    // path segment (".../events/<id>/5" = tab index 5, "Termine"). Editing
-    // a sibling date from inside this exact tab previously always navigated
-    // to just ".../events/<otherId>" with no tab segment, which silently
-    // lands on tab 0 ("Inhalte") instead - jarring when you're trying to
-    // bounce between dates of the same series while managing them.
-    const currentTabSuffix = (() => {
-        const m = location.pathname.match(/\/events\/[^/]+\/(\d+)$/);
-        return m ? `/${m[1]}` : '';
-    })();
 
     const [filter, setFilter] = useState('all');
     const [dates, setDates] = useState<any[]>([]);
@@ -114,6 +102,121 @@ export const EventDatesManager = () => {
     });
     const [previewDates, setPreviewDates] = useState<string[] | null>(null);
     const [previewing, setPreviewing] = useState(false);
+
+    // Inline "Bearbeiten" panel - opens directly under the clicked row
+    // (not a full navigation/page reload like before, and not a modal) with
+    // old Matukio's real per-date fields (allday/showbegin/showend/
+    // showbooked - administrator/components/com_matukio/models/events.php)
+    // plus a real venue picker (old's real override_place_id dropdown,
+    // administrator/.../views/date/tmpl/default.php - a free-text field
+    // here before). "Zusätzliche Tage" has no old equivalent (checked - no
+    // "additional day" concept anywhere in com_matukio) - a new capability
+    // for a date that meets on extra non-contiguous days.
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingRecord, setEditingRecord] = useState<any>(null);
+    const [editSaving, setEditSaving] = useState(false);
+    const [locations, setLocations] = useState<{ id: string; title: string }[]>([]);
+    const [editForm, setEditForm] = useState({
+        startDate: '', endDate: '', registrationDeadline: '',
+        showStartTime: true, showEndTime: true, showRegistrationDeadline: true,
+        allDay: false,
+        showAdditionalDays: false,
+        additionalDays: [] as { date: string; startTime: string; endTime: string }[],
+        bookingNumber: '', titleOverride: '', maxParticipants: '', locationId: '',
+    });
+
+    useEffect(() => {
+        fetch(`${API}/locations?_end=1000`, { headers: authHeaders() })
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data) => setLocations(Array.isArray(data) ? data : []))
+            .catch(() => {});
+    }, []);
+
+    const openEditRow = (d: any) => {
+        if (editingId === d.id) { setEditingId(null); setEditingRecord(null); return; }
+        setEditForm({
+            startDate: toLocalInput(d.startDate),
+            endDate: toLocalInput(d.endDate),
+            registrationDeadline: toLocalInput(d.registrationDeadline),
+            showStartTime: d.showStartTime !== false,
+            showEndTime: d.showEndTime !== false,
+            showRegistrationDeadline: d.showRegistrationDeadline !== false,
+            allDay: !!d.allDay,
+            showAdditionalDays: Array.isArray(d.additionalDays) && d.additionalDays.length > 0,
+            additionalDays: Array.isArray(d.additionalDays) ? d.additionalDays : [],
+            bookingNumber: d.bookingNumber || '',
+            titleOverride: d.titleOverride || '',
+            maxParticipants: d.maxParticipants != null ? String(d.maxParticipants) : '',
+            locationId: d.locationId || '',
+        });
+        setEditingRecord(d);
+        setEditingId(d.id);
+    };
+
+    const addAdditionalDay = () => {
+        setEditForm((f) => ({ ...f, additionalDays: [...f.additionalDays, { date: '', startTime: '09:00', endTime: '17:00' }] }));
+    };
+    const updateAdditionalDay = (index: number, key: 'date' | 'startTime' | 'endTime', value: string) => {
+        setEditForm((f) => ({ ...f, additionalDays: f.additionalDays.map((d, i) => (i === index ? { ...d, [key]: value } : d)) }));
+    };
+    const removeAdditionalDay = (index: number) => {
+        setEditForm((f) => ({ ...f, additionalDays: f.additionalDays.filter((_, i) => i !== index) }));
+    };
+
+    const saveEditRow = async () => {
+        if (!editingId || !editingRecord) return;
+        if (!editForm.startDate) { notify('Bitte ein Startdatum angeben', { type: 'warning' }); return; }
+        setEditSaving(true);
+        try {
+            // PUT /api/events/:id applies prisma.event.update({data}), which
+            // is a true partial update - any column simply left out of the
+            // payload is untouched. The only fields the route handler itself
+            // defaults when absent are capacity/maxParticipants/
+            // minParticipants/maxBookablePerPerson/feePerPerson, so those are
+            // passed through unchanged from editingRecord. Everything else
+            // (title, description, categoryId, organizerId, ...) is
+            // deliberately omitted rather than spread from editingRecord:
+            // categoryId in particular is a relation-backed scalar that this
+            // Prisma client rejects outright in an update() payload
+            // ("Unknown argument `categoryId`"), and omitting the rest is
+            // both safer (can't blank out fields this form never shows) and
+            // avoids that error entirely.
+            const payload = {
+                capacity: editingRecord.capacity,
+                minParticipants: editingRecord.minParticipants,
+                maxBookablePerPerson: editingRecord.maxBookablePerPerson,
+                feePerPerson: editingRecord.feePerPerson,
+                startDate: new Date(editForm.startDate).toISOString(),
+                endDate: editForm.endDate ? new Date(editForm.endDate).toISOString() : null,
+                registrationDeadline: editForm.registrationDeadline ? new Date(editForm.registrationDeadline).toISOString() : null,
+                showStartTime: editForm.showStartTime,
+                showEndTime: editForm.showEndTime,
+                showRegistrationDeadline: editForm.showRegistrationDeadline,
+                allDay: editForm.allDay,
+                additionalDays: editForm.showAdditionalDays ? editForm.additionalDays.filter((d) => d.date) : [],
+                bookingNumber: editForm.bookingNumber || null,
+                titleOverride: editForm.titleOverride || null,
+                maxParticipants: editForm.maxParticipants ? Number(editForm.maxParticipants) : null,
+                locationId: editForm.locationId || null,
+            };
+            const res = await fetch(`${API}/events/${editingId}`, {
+                method: 'PUT',
+                headers: authHeaders(),
+                body: JSON.stringify(payload),
+            });
+            if (res.ok) {
+                notify('Termin aktualisiert', { type: 'success' });
+                setEditingId(null);
+                setEditingRecord(null);
+                loadDates();
+                refresh();
+            } else {
+                notify('Fehler beim Speichern', { type: 'error' });
+            }
+        } finally {
+            setEditSaving(false);
+        }
+    };
 
     const seriesId = record?.seriesId;
 
@@ -350,8 +453,8 @@ export const EventDatesManager = () => {
                     </TableHead>
                     <TableBody>
                         {dates.map((d) => (
+                          <Fragment key={d.id}>
                             <TableRow
-                                key={d.id}
                                 selected={d.id === record.id}
                                 hover
                                 sx={{ borderLeft: `3px solid ${dateStatusColor(d)}` }}
@@ -392,19 +495,8 @@ export const EventDatesManager = () => {
                                 <TableCell align="right">
                                   <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'flex-end', alignItems: 'center', gap: 0.25 }}>
                                     <Tooltip title="Bearbeiten">
-                                        <IconButton
-                                            size="small"
-                                            onClick={() => {
-                                                // A plain client-side navigate() here (react-router, inside the
-                                                // same mounted <Edit>/<TabbedForm> tree) left the page blank for
-                                                // a sibling date - react-admin's record/tab state didn't reliably
-                                                // reset for the new id. A full browser navigation re-mounts
-                                                // everything from scratch, the same proven path as opening any
-                                                // event edit page for the first time.
-                                                window.location.href = `/admin/events/${encodeURIComponent(d.id)}${currentTabSuffix}`;
-                                            }}
-                                        >
-                                            <EditIcon fontSize="small" />
+                                        <IconButton size="small" onClick={() => openEditRow(d)}>
+                                            <EditIcon fontSize="small" color={editingId === d.id ? 'primary' : 'inherit'} />
                                         </IconButton>
                                     </Tooltip>
                                     <Tooltip title={d.published ? 'Verstecken' : 'Veröffentlichen'}>
@@ -425,6 +517,137 @@ export const EventDatesManager = () => {
                                   </Box>
                                 </TableCell>
                             </TableRow>
+                            {editingId === d.id && (
+                                <TableRow>
+                                    <TableCell colSpan={9} sx={{ bgcolor: '#fafafa', p: 2 }}>
+                                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                <MuiTextField
+                                                    label="Beginn" type="datetime-local" size="small" required
+                                                    value={editForm.startDate}
+                                                    onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                                                    slotProps={{ inputLabel: { shrink: true } }}
+                                                />
+                                                <FormControlLabel
+                                                    control={<Switch size="small" checked={editForm.showStartTime} onChange={(e) => setEditForm((f) => ({ ...f, showStartTime: e.target.checked }))} />}
+                                                    label="Anzeigen"
+                                                />
+                                            </Box>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                <MuiTextField
+                                                    label="Ende" type="datetime-local" size="small"
+                                                    value={editForm.endDate}
+                                                    onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                                                    slotProps={{ inputLabel: { shrink: true } }}
+                                                />
+                                                <FormControlLabel
+                                                    control={<Switch size="small" checked={editForm.showEndTime} onChange={(e) => setEditForm((f) => ({ ...f, showEndTime: e.target.checked }))} />}
+                                                    label="Anzeigen"
+                                                />
+                                            </Box>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                <MuiTextField
+                                                    label="Anmeldeschluss" type="datetime-local" size="small"
+                                                    value={editForm.registrationDeadline}
+                                                    onChange={(e) => setEditForm((f) => ({ ...f, registrationDeadline: e.target.value }))}
+                                                    slotProps={{ inputLabel: { shrink: true } }}
+                                                />
+                                                <FormControlLabel
+                                                    control={<Switch size="small" checked={editForm.showRegistrationDeadline} onChange={(e) => setEditForm((f) => ({ ...f, showRegistrationDeadline: e.target.checked }))} />}
+                                                    label="Anzeigen"
+                                                />
+                                            </Box>
+                                        </Box>
+
+                                        <FormControlLabel
+                                            sx={{ mt: 1 }}
+                                            control={<Switch size="small" checked={editForm.allDay} onChange={(e) => setEditForm((f) => ({ ...f, allDay: e.target.checked }))} />}
+                                            label="Nicht festgelegte Zeit oder den ganzen Tag"
+                                        />
+
+                                        <Box sx={{ mt: 1 }}>
+                                            {!editForm.showAdditionalDays ? (
+                                                <Button size="small" onClick={() => setEditForm((f) => ({ ...f, showAdditionalDays: true }))}>
+                                                    + Zusätzliche Tage
+                                                </Button>
+                                            ) : (
+                                                <Box>
+                                                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Zusätzliche Tage</Typography>
+                                                    {editForm.additionalDays.map((day, i) => (
+                                                        <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5 }}>
+                                                            <MuiTextField
+                                                                label="Datum" type="date" size="small"
+                                                                value={day.date}
+                                                                onChange={(e) => updateAdditionalDay(i, 'date', e.target.value)}
+                                                                slotProps={{ inputLabel: { shrink: true } }}
+                                                            />
+                                                            <MuiTextField
+                                                                label="Von" type="time" size="small"
+                                                                value={day.startTime}
+                                                                onChange={(e) => updateAdditionalDay(i, 'startTime', e.target.value)}
+                                                                slotProps={{ inputLabel: { shrink: true } }}
+                                                            />
+                                                            <MuiTextField
+                                                                label="Bis" type="time" size="small"
+                                                                value={day.endTime}
+                                                                onChange={(e) => updateAdditionalDay(i, 'endTime', e.target.value)}
+                                                                slotProps={{ inputLabel: { shrink: true } }}
+                                                            />
+                                                            <IconButton size="small" onClick={() => removeAdditionalDay(i)}>
+                                                                <DeleteIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Box>
+                                                    ))}
+                                                    <Button size="small" onClick={addAdditionalDay}>+ Tag hinzufügen</Button>
+                                                </Box>
+                                            )}
+                                        </Box>
+
+                                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2 }}>
+                                            <MuiTextField
+                                                label="Nummer" size="small"
+                                                helperText="Veranstaltungs-Nummer, z.B. 5/26 (Optional)"
+                                                value={editForm.bookingNumber}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, bookingNumber: e.target.value }))}
+                                            />
+                                            <MuiTextField
+                                                label="Titel Überschreibung" size="small"
+                                                helperText="Hier können Sie den Titel für diesen Termin überschreiben"
+                                                value={editForm.titleOverride}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, titleOverride: e.target.value }))}
+                                            />
+                                            <MuiTextField
+                                                label="Max. Anzahl Teilnehmer" type="number" size="small"
+                                                helperText="Hier können Sie die maximale Anzahl an Teilnehmern für diese Veranstaltung überschreiben"
+                                                value={editForm.maxParticipants}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, maxParticipants: e.target.value }))}
+                                            />
+                                            <FormControl size="small" sx={{ minWidth: 220 }}>
+                                                <InputLabel id={`loc-${d.id}`}>Veranstaltungsort</InputLabel>
+                                                <Select
+                                                    labelId={`loc-${d.id}`}
+                                                    label="Veranstaltungsort"
+                                                    value={editForm.locationId}
+                                                    onChange={(e) => setEditForm((f) => ({ ...f, locationId: e.target.value as string }))}
+                                                >
+                                                    <MenuItem value="">
+                                                        <em>Standard-Veranstaltungsort der Veranstaltung</em>
+                                                    </MenuItem>
+                                                    {locations.map((loc) => (
+                                                        <MenuItem key={loc.id} value={loc.id}>{loc.title}</MenuItem>
+                                                    ))}
+                                                </Select>
+                                            </FormControl>
+                                        </Box>
+
+                                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                                            <Button onClick={() => { setEditingId(null); setEditingRecord(null); }}>Abbrechen</Button>
+                                            <Button variant="contained" onClick={saveEditRow} disabled={editSaving}>Speichern</Button>
+                                        </Box>
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                          </Fragment>
                         ))}
                     </TableBody>
                 </Table>

@@ -138,6 +138,14 @@ model Event {
   showStartTime            Boolean @default(true)
   showEndTime              Boolean @default(true)
   showRegistrationDeadline Boolean @default(true)
+  // New (no old Matukio equivalent - checked administrator/components/
+  // com_matukio for any "additional day" concept, none found) - lets an
+  // admin attach extra, non-contiguous day/time entries to a single
+  // recurring date (e.g. a course meeting Mon 9-12 AND Wed 14-17 under one
+  // booking entry) beyond its own single startDate/endDate range. Array of
+  // {date, startTime, endTime}, display-only (doesn't affect booking
+  // eligibility/capacity logic).
+  additionalDays       Json?
   bookings             Booking[]
   Comment              Comment[]
   categoryRef          Category?     @relation(fields: [categoryId], references: [id])
