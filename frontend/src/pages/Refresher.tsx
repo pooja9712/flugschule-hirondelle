@@ -13,7 +13,7 @@ import { usePageGallery } from '../hooks/usePageGallery';
 const FALLBACK_GALLERY = [
   '19796867335_b24c8e36a4_o', '1Platzhalterbild', 'DSC_0072', 'DSC01324', 'DSC01376',
   'DSC01389', 'DSC01390', 'DSC01395',
-].map((f) => `/images/refresher/${f}.jpg`);
+].map((f) => `/images/1-refresher/${f}.jpg`);
 
 export const Refresher = () => {
   const { openGallery } = useLightbox();
@@ -47,7 +47,7 @@ export const Refresher = () => {
             {/* Main Image */}
             <div className="w-full h-[400px] relative overflow-hidden rounded-sm shadow-sm">
               <img 
-                src="/images/refresher/hero.jpg"
+                src="/images/1-refresher/hero.jpg"
                 alt="Refresherkurs"
                 className="w-full h-full object-cover transition-transform duration-1000 hover:scale-105"
               />

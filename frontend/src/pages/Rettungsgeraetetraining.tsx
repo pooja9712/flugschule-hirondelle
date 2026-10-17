@@ -17,7 +17,7 @@ const FALLBACK_GALLERY = [
   'rettungstraining15', 'rettungstraining17', 'rettungstraining19', 'rettungstraining2', 'rettungstraining20',
   'rettungstraining21', 'rettungstraining22', 'rettungstraining3', 'rettungstraining4', 'rettungstraining5',
   'rettungstraining6', 'rettungstraining7', 'rettungstraining8', 'rettungstraining9',
-].map((f) => `/images/rettungsgeraete/${f}.jpg`);
+].map((f) => `/images/1-rettungsgeraete/${f}.jpg`);
 
 interface PriceRow { label: string; price: string }
 

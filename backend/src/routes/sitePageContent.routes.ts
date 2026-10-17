@@ -756,7 +756,7 @@ export const DEFAULTS: Record<string, any> = {
   'a-schein': {
     eyebrow: 'AUSBILDUNG',
     heading: 'A-Schein',
-    heroImage: '/images/a-schein/hero.jpg',
+    heroImage: '/images/1-a-schein/hero.jpg',
     heroAlt: 'A-Schein Höhenflugkurs',
     pilotHeading: 'Du wirst endlich lizenzierter Pilot',
     pilotHtml: 'Auf den <a href="/ausbildung/l-schein" class="text-[#428bca] hover:text-[#2a6496] hover:underline font-medium">Grundkurs</a> aufbauend, werden für den A-Schein die Kenntnisse vertieft. Kurvenflug, Schirmkontrolle und vielleicht schon das erste Rückwärtsaufziehen an dem Übungshang sind einige der Lerninhalte, die in diesem Kurs neben den Höhenflügen auf dem Lehrplan stehen. Mit der vorgeschriebenen Ausbildung in Theorie und Praxis machen wir aus dir einen sicheren und umsichtigen Piloten. Nach erfolgreich bestandener Theorieprüfung und Erreichen von mind. 40 Höhenflügen sowie 18.000 Höhenmetern kannst du dann auch die praktische Prüfung ablegen. Mit dem A-Schein in deinen Händen, warten die zugelassenen Gelände in ganz Deutschland und darüber hinaus von dir erflogen zu werden!',

@@ -19,7 +19,7 @@ const FALLBACK_GALLERY = [
   'a_schein22', 'a_schein23', 'a_schein24', 'a_schein25', 'a_schein26',
   'a_schein27', 'a_schein3', 'a_schein4', 'a_schein5', 'a_schein6',
   'a_schein7', 'a_schein8', 'a_schein9',
-].map((f) => `/images/a-schein/${f}.jpg`);
+].map((f) => `/images/1-a-schein/${f}.jpg`);
 
 interface PriceRow { title: string; description: string; price: string }
 interface ExtraCostRow { label: string; price: string }
@@ -60,7 +60,7 @@ interface AScheinData {
 const DEFAULT_CONTENT: AScheinData = {
   eyebrow: 'AUSBILDUNG',
   heading: 'A-Schein',
-  heroImage: '/images/a-schein/hero.jpg',
+  heroImage: '/images/1-a-schein/hero.jpg',
   heroAlt: 'A-Schein Höhenflugkurs',
   pilotHeading: 'Du wirst endlich lizenzierter Pilot',
   pilotHtml:

@@ -17,7 +17,7 @@ const FALLBACK_GALLERY = [
   'winde12', 'winde13', 'winde14', 'winde15', 'winde16',
   'winde17', 'winde18', 'winde2', 'winde20', 'winde4',
   'winde5', 'winde6.1', 'winde6', 'winde7', 'winde8',
-].map((f) => `/images/windenschein/${f}.jpg`);
+].map((f) => `/images/1-winde/${f}.jpg`);
 
 interface PriceRow { label: string; price: string }
 
