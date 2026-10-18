@@ -474,20 +474,27 @@ const BookingTabContent = () => (
                 />
             </MCard>
 
+            {/* Old's real "Teilnehmer" card (Max. Teiln./Min. Teilnehmerzahl)
+                stays visible no matter which Buchungs-Typ is selected - its
+                own "Keine Online-Buchung" tooltip (below) says so explicitly:
+                "...und trotzdem können die Mindest- und Maximal-
+                Teilnehmerzahl angezeigt werden". Only "bei Überschreitung"
+                (stop vs. waitlist) is specific to the "limited" online-
+                booking-enforcement flow, so that one stays conditional. */}
             <FormDataConsumer>
-                {({ formData }) => formData.bookingType !== 'none' && (
+                {({ formData }) => (
                     <MCard title="Teilnehmer">
+                        <NumberInput source="maxParticipants" label="Max. Teiln." fullWidth />
                         {formData.bookingType === 'limited' && (
-                            <>
-                                <NumberInput source="maxParticipants" label="Max. Teiln." fullWidth />
-                                <SelectInput source="onExceed" label="bei Überschreitung" choices={[
-                                    { id: 'waitlist', name: 'Warteliste' },
-                                    { id: 'stop', name: 'Buchung stoppen' }
-                                ]} defaultValue="waitlist" fullWidth />
-                            </>
+                            <SelectInput source="onExceed" label="bei Überschreitung" choices={[
+                                { id: 'waitlist', name: 'Warteliste' },
+                                { id: 'stop', name: 'Buchung stoppen' }
+                            ]} defaultValue="waitlist" fullWidth />
                         )}
                         <NumberInput source="minParticipants" label="Min. Teilnehmerzahl" fullWidth defaultValue={0} />
-                        <NumberInput source="maxBookablePerPerson" label="Max. buchbare Plätze pro Person" fullWidth defaultValue={2} />
+                        {formData.bookingType !== 'none' && (
+                            <NumberInput source="maxBookablePerPerson" label="Max. buchbare Plätze pro Person" fullWidth defaultValue={2} />
+                        )}
                     </MCard>
                 )}
             </FormDataConsumer>
