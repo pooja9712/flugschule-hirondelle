@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField as MuiTextField,
     ToggleButtonGroup, ToggleButton, Checkbox, FormControlLabel, Chip, IconButton, Tooltip,
-    Table, TableHead, TableRow, TableCell, TableBody, Radio, RadioGroup, FormControl, FormLabel,
+    Table, TableContainer, TableHead, TableRow, TableCell, TableBody, Radio, RadioGroup, FormControl, FormLabel,
     Typography, CircularProgress, Switch, Select, MenuItem, InputLabel
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
@@ -437,6 +437,7 @@ export const EventDatesManager = () => {
             ) : dates.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">Keine Termine für diesen Filter gefunden.</Typography>
             ) : (
+                <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                     <TableHead>
                         <TableRow>
@@ -674,6 +675,7 @@ export const EventDatesManager = () => {
                         ))}
                     </TableBody>
                 </Table>
+                </TableContainer>
             )}
 
             {/* Einzelnen Termin hinzufügen */}
