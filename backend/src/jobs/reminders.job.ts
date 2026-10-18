@@ -25,6 +25,32 @@ async function resolveLocationName(event: { location: string | null; locationId:
 // revert if ever wanted back.
 const SEND_3_DAY_EVENT_REMINDERS = false;
 
+// Checked old's real config.xml (administrator/components/com_matukio/
+// config.xml:1199-1258, the "crobjobs" fieldset) the same way as the 3-day
+// reminder above: its only 3 cron fields are cron_freeplaces_reminder,
+// cron_confirmationcheck and cron_invoice_afterevent, all default OFF - and
+// none of them is wired to an actual scheduled task anywhere in old's
+// codebase at all (grepped for a cron runner across com_matukio - there
+// isn't one). Also checked old's real seeded email templates (script.php's
+// #__matukio_templates insert - mail_booking, mail_booking_canceled(_admin),
+// export_csv/signaturelist/participantslist/certificate, invoice,
+// invoice_email, ticket, mail_cron_reminder) for anything about ratings/
+// reviews/bewertung - none exists either. `grade` only ever exists in old
+// as a passive, never-automated DB column on the admin bookings list. This
+// is this app's own invented feature, with zero old basis - same
+// conclusion as the 3-day reminder.
+//
+// Disabled 2026-10-18 after it sent a real migrated customer (Sarah
+// Fuhrmann) a "how was your event" email for a 2026 event her booking got
+// mis-linked to during migration (her real booking was from 2018, for an
+// event occurrence that never got migrated - confirmed via direct DB check
+// that this is an isolated data artifact, 1 of 7302 migrated bookings, not
+// a systemic migration problem). That mis-link was the trigger that
+// surfaced this, but the feature itself has no old basis regardless and
+// stays off. Disabled, not deleted - one-line revert if ever wanted as a
+// genuinely new feature.
+const SEND_POST_EVENT_RATING_REQUESTS = false;
+
 // Run every day at 08:00 AM
 export const startCronJobs = () => {
   // Explicit timezone (not relying solely on process.env.TZ propagating
@@ -99,54 +125,56 @@ export const startCronJobs = () => {
       }
 
       // --- 2. Post-event rating request: events that ended yesterday ---
-      const yesterdayStart = new Date();
-      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-      yesterdayStart.setHours(0, 0, 0, 0);
-      const yesterdayEnd = new Date(yesterdayStart);
-      yesterdayEnd.setDate(yesterdayEnd.getDate() + 1);
+      if (SEND_POST_EVENT_RATING_REQUESTS) {
+        const yesterdayStart = new Date();
+        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+        yesterdayStart.setHours(0, 0, 0, 0);
+        const yesterdayEnd = new Date(yesterdayStart);
+        yesterdayEnd.setDate(yesterdayEnd.getDate() + 1);
 
-      const endedEvents = await prisma.event.findMany({
-        where: {
-          OR: [
-            { endDate: { gte: yesterdayStart, lt: yesterdayEnd } },
-            { endDate: null, startDate: { gte: yesterdayStart, lt: yesterdayEnd } }
-          ]
-        },
-        // Only actually-confirmed/attended bookings - `not: CANCELLED` also
-        // matched PENDING (never paid) and WAITLIST (never admitted),
-        // sending "thanks for attending" emails to people who didn't.
-        // ratingRequestSentAt: null - same duplicate-prevention reasoning
-        // as the 3-day reminder query above.
-        include: { bookings: { where: { status: { in: ['CONFIRMED', 'COMPLETED'] }, ratingRequestSentAt: null }, include: { user: true } } }
-      });
+        const endedEvents = await prisma.event.findMany({
+          where: {
+            OR: [
+              { endDate: { gte: yesterdayStart, lt: yesterdayEnd } },
+              { endDate: null, startDate: { gte: yesterdayStart, lt: yesterdayEnd } }
+            ]
+          },
+          // Only actually-confirmed/attended bookings - `not: CANCELLED` also
+          // matched PENDING (never paid) and WAITLIST (never admitted),
+          // sending "thanks for attending" emails to people who didn't.
+          // ratingRequestSentAt: null - same duplicate-prevention reasoning
+          // as the 3-day reminder query above.
+          include: { bookings: { where: { status: { in: ['CONFIRMED', 'COMPLETED'] }, ratingRequestSentAt: null }, include: { user: true } } }
+        });
 
-      console.log(`Found ${endedEvents.length} events that ended yesterday - sending rating requests.`);
+        console.log(`Found ${endedEvents.length} events that ended yesterday - sending rating requests.`);
 
-      for (const event of endedEvents) {
-        for (const booking of event.bookings) {
-          if (booking.rating != null) continue; // already rated
-          try {
-            const { name: customerName, email: customerEmail } = resolveBookingCustomer(booking);
-            if (!customerEmail) continue;
+        for (const event of endedEvents) {
+          for (const booking of event.bookings) {
+            if (booking.rating != null) continue; // already rated
+            try {
+              const { name: customerName, email: customerEmail } = resolveBookingCustomer(booking);
+              if (!customerEmail) continue;
 
-            const baseUrl = process.env.FRONTEND_URL || 'https://www.fs-hirondelle.de';
-            const info = await transporter.sendMail({
-              from: fromHeader,
-              to: customerEmail,
-              subject: `Wie war "${event.title}"? Ihre Meinung ist uns wichtig!`,
-              html: `
-                <h3>Hallo ${customerName},</h3>
-                <p>vielen Dank für Ihre Teilnahme an <strong>${event.title}</strong>!</p>
-                <p>Wir würden uns sehr über Ihre Bewertung freuen:</p>
-                <p><a href="${baseUrl}/bewertung/${booking.id}" style="display:inline-block;padding:10px 20px;background:#5bc0de;color:#fff;text-decoration:none;border-radius:4px;">Jetzt bewerten</a></p>
-                <br/>
-                <p>Ihr Team der Flugschule Hirondelle</p>
-              `
-            });
-            await prisma.booking.update({ where: { id: booking.id }, data: { ratingRequestSentAt: new Date() } });
-            if (isTestMode) console.log(`Rating request sent for booking ${booking.id} (test mode, no real SMTP configured yet):`, info.messageId);
-          } catch (err) {
-            console.error(`Failed to send rating request for booking ${booking.id}:`, err);
+              const baseUrl = process.env.FRONTEND_URL || 'https://www.fs-hirondelle.de';
+              const info = await transporter.sendMail({
+                from: fromHeader,
+                to: customerEmail,
+                subject: `Wie war "${event.title}"? Ihre Meinung ist uns wichtig!`,
+                html: `
+                  <h3>Hallo ${customerName},</h3>
+                  <p>vielen Dank für Ihre Teilnahme an <strong>${event.title}</strong>!</p>
+                  <p>Wir würden uns sehr über Ihre Bewertung freuen:</p>
+                  <p><a href="${baseUrl}/bewertung/${booking.id}" style="display:inline-block;padding:10px 20px;background:#5bc0de;color:#fff;text-decoration:none;border-radius:4px;">Jetzt bewerten</a></p>
+                  <br/>
+                  <p>Ihr Team der Flugschule Hirondelle</p>
+                `
+              });
+              await prisma.booking.update({ where: { id: booking.id }, data: { ratingRequestSentAt: new Date() } });
+              if (isTestMode) console.log(`Rating request sent for booking ${booking.id} (test mode, no real SMTP configured yet):`, info.messageId);
+            } catch (err) {
+              console.error(`Failed to send rating request for booking ${booking.id}:`, err);
+            }
           }
         }
       }
