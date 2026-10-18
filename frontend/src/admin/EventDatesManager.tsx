@@ -105,7 +105,8 @@ export const EventDatesManager = () => {
         interval: 1,
         beginTime: '09:00',
         endTime: '17:00',
-        bookingDeadlineTime: ''
+        bookingDeadlineTime: '',
+        daysBetween: 0
     });
     const [previewDates, setPreviewDates] = useState<string[] | null>(null);
     const [previewing, setPreviewing] = useState(false);
@@ -326,7 +327,8 @@ export const EventDatesManager = () => {
         },
         beginTime: recurForm.beginTime,
         endTime: recurForm.endTime,
-        bookingDeadlineTime: recurForm.bookingDeadlineTime || undefined
+        bookingDeadlineTime: recurForm.bookingDeadlineTime || undefined,
+        daysBetween: Number(recurForm.daysBetween) || 0
     });
 
     const previewRecurring = async () => {
@@ -815,12 +817,24 @@ export const EventDatesManager = () => {
                         />
                     </Box>
 
-                    <MuiTextField
-                        label="Anmeldeschluss-Zeit (optional, gleicher Tag)" type="time" fullWidth
-                        value={recurForm.bookingDeadlineTime}
-                        onChange={e => setRecurForm(f => ({ ...f, bookingDeadlineTime: e.target.value }))}
-                        slotProps={{ inputLabel: { shrink: true } }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <MuiTextField
+                            label="Anmeldeschluss-Zeit (optional, gleicher Tag)" type="time" fullWidth
+                            value={recurForm.bookingDeadlineTime}
+                            onChange={e => setRecurForm(f => ({ ...f, bookingDeadlineTime: e.target.value }))}
+                            slotProps={{ inputLabel: { shrink: true } }}
+                        />
+                        {/* Old's real recurring-days-between (COM_MATUKIO_
+                            DAY_BETWEEN_START_AND_END) - each generated
+                            occurrence spans this many days past its own
+                            start date, for a repeated multi-day event. */}
+                        <MuiTextField
+                            label="Tage zwischen Beginn und Ende" type="number" fullWidth
+                            slotProps={{ htmlInput: { min: 0 } }}
+                            value={recurForm.daysBetween}
+                            onChange={e => setRecurForm(f => ({ ...f, daysBetween: Number(e.target.value) }))}
+                        />
+                    </Box>
 
                     <FormControl>
                         <FormLabel>Endet</FormLabel>

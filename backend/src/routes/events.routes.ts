@@ -557,8 +557,8 @@ router.post('/:id/add-recurring-dates', authenticateJWT, authorizeAdmin, async (
     const reference = await prisma.event.findUnique({ where: { id: req.params.id as string } });
     if (!reference) return res.status(404).json({ message: 'Not found' });
 
-    const { recurrence, beginTime, endTime, bookingDeadlineTime } = req.body as {
-      recurrence: RecurrenceSpec; beginTime: string; endTime: string; bookingDeadlineTime?: string;
+    const { recurrence, beginTime, endTime, bookingDeadlineTime, daysBetween } = req.body as {
+      recurrence: RecurrenceSpec; beginTime: string; endTime: string; bookingDeadlineTime?: string; daysBetween?: number;
     };
 
     const dateStrings = generateRecurringDates(recurrence);
@@ -590,10 +590,18 @@ router.post('/:id/add-recurring-dates', authenticateJWT, authorizeAdmin, async (
       ...shared
     } = reference as any;
 
+    // Old's real "Tage zwischen Beginn und Ende" (recurring-days-between) -
+    // each generated occurrence spans this many days past its own start
+    // date, for a multi-day course/tour repeated on a schedule (e.g. every
+    // Monday for 3 days) rather than every occurrence being single-day.
+    const spanDays = Number(daysBetween) || 0;
+
     const created = [];
     for (const dateStr of dateStrings) {
       const startDate = new Date(`${dateStr}T${beginTime || '09:00'}:00`);
-      const endDate = new Date(`${dateStr}T${endTime || '17:00'}:00`);
+      const endDateBase = new Date(`${dateStr}T${endTime || '17:00'}:00`);
+      if (spanDays > 0) endDateBase.setDate(endDateBase.getDate() + spanDays);
+      const endDate = endDateBase;
       const registrationDeadline = bookingDeadlineTime ? new Date(`${dateStr}T${bookingDeadlineTime}:00`) : null;
 
       let alias = `${baseAlias}-${dateStr}`;
