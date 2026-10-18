@@ -5,7 +5,7 @@ import {
     Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField as MuiTextField,
     ToggleButtonGroup, ToggleButton, Checkbox, FormControlLabel, Chip, IconButton, Tooltip,
     Table, TableContainer, TableHead, TableRow, TableCell, TableBody, Radio, RadioGroup, FormControl, FormLabel,
-    Typography, CircularProgress, Switch, Select, MenuItem, InputLabel
+    Typography, CircularProgress, Switch, Select, MenuItem, InputLabel, Fab, Menu
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -82,6 +82,13 @@ export const EventDatesManager = () => {
     const [addOpen, setAddOpen] = useState(false);
     const [recurOpen, setRecurOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+    // Old's real "+" FAB at the bottom of the dates list (layouts/event/
+    // edit/dates.php: a round plus-circle button with a dropdown offering
+    // COM_MATUKIO_ADD_DATE / COM_MATUKIO_BATCH_CREATE_DATES) - we already
+    // had the same two actions as plain buttons above the table, but old
+    // keeps this one reachable at the bottom too, without scrolling back up
+    // past a long list of dates.
+    const [bottomAddAnchor, setBottomAddAnchor] = useState<null | HTMLElement>(null);
 
     const [addForm, setAddForm] = useState({
         startDate: '', endDate: '', registrationDeadline: '',
@@ -677,6 +684,22 @@ export const EventDatesManager = () => {
                 </Table>
                 </TableContainer>
             )}
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5 }}>
+                <Tooltip title="Termin hinzufügen">
+                    <Fab size="small" color="primary" onClick={(e) => setBottomAddAnchor(e.currentTarget)}>
+                        <AddIcon />
+                    </Fab>
+                </Tooltip>
+                <Menu anchorEl={bottomAddAnchor} open={!!bottomAddAnchor} onClose={() => setBottomAddAnchor(null)}>
+                    <MenuItem onClick={() => { setBottomAddAnchor(null); openAddDialog(); }}>
+                        <AddIcon fontSize="small" sx={{ mr: 1 }} /> Termin hinzufügen
+                    </MenuItem>
+                    <MenuItem onClick={() => { setBottomAddAnchor(null); openRecurDialog(); }}>
+                        <EventRepeatIcon fontSize="small" sx={{ mr: 1 }} /> Serientermine generieren
+                    </MenuItem>
+                </Menu>
+            </Box>
 
             {/* Einzelnen Termin hinzufügen */}
             <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
