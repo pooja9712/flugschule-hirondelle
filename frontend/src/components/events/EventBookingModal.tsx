@@ -179,7 +179,10 @@ export const EventBookingModal: React.FC<EventBookingModalProps> = ({ isOpen, on
       // ids - anything else (empty, malformed, a genuinely new field id
       // with no data-path to reach the booking) falls back to the
       // hardcoded defaults above rather than silently dropping fields.
-      fetch('/api/bookingFormConfig/public')
+      // formId: old's real per-event "Individuelles Buchungsformular"
+      // override (Event.customBookingFormId) - falls back to the site
+      // default server-side if this event has none set.
+      fetch(`/api/bookingFormConfig/public${event.customBookingFormId ? `?formId=${event.customBookingFormId}` : ''}`)
         .then(res => res.json())
         .then(config => {
           const step = config?.steps?.find((s: any) => s.id === 'step-1') || config?.steps?.[0];

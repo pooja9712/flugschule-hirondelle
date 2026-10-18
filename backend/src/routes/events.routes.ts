@@ -625,6 +625,46 @@ router.post('/:id/add-recurring-dates', authenticateJWT, authorizeAdmin, async (
   }
 });
 
+// Old's real per-event "Individuelles Buchungsformular" (layouts/event/
+// edit/booking.php's card-booking-override, bookingform.create/.delete
+// tasks) - creates a new BookingFormConfig cloned from the site default and
+// links it to this event, so the admin starts editing something that
+// already looks like a real form instead of a blank one.
+router.post('/:id/custom-booking-form', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: req.params.id as string } });
+    if (!event) return res.status(404).json({ message: 'Not found' });
+
+    const defaultConfig = await prisma.bookingFormConfig.findUnique({ where: { id: 'default' } });
+    const newConfig = await prisma.bookingFormConfig.create({
+      data: {
+        name: `Formular: ${event.title}`,
+        steps: defaultConfig?.steps ?? [{ id: 'step-1', title: 'Anmeldung', fields: [] }],
+      },
+    });
+    await prisma.event.update({ where: { id: event.id }, data: { customBookingFormId: newConfig.id } });
+    res.status(201).json({ id: newConfig.id });
+  } catch (error) {
+    console.error('POST /:id/custom-booking-form error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.delete('/:id/custom-booking-form', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: req.params.id as string } });
+    if (!event) return res.status(404).json({ message: 'Not found' });
+    if (event.customBookingFormId) {
+      await prisma.event.update({ where: { id: event.id }, data: { customBookingFormId: null } });
+      await prisma.bookingFormConfig.delete({ where: { id: event.customBookingFormId } }).catch(() => {});
+    }
+    res.json({ message: 'Individuelles Buchungsformular entfernt' });
+  } catch (error) {
+    console.error('DELETE /:id/custom-booking-form error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Quick standalone duplicate (Matukio has no direct equivalent, but this is the
 // obvious complement so an admin never has to re-type an entire event by hand).
 router.post('/:id/duplicate', authenticateJWT, authorizeAdmin, async (req, res) => {

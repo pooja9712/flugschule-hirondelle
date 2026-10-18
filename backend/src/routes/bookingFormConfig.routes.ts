@@ -4,13 +4,33 @@ import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware'
 
 const router = Router();
 
-// Public endpoint for the frontend booking form
+// Public endpoint for the frontend booking form. ?formId= resolves an
+// event's Event.customBookingFormId (old's real per-event "Individuelles
+// Buchungsformular" override) - falls back to "default" if omitted, not
+// found, or itself resolves to "default".
 router.get('/public', async (req, res) => {
   try {
-    const config = await prisma.bookingFormConfig.findUnique({
-      where: { id: 'default' }
-    });
+    const formId = typeof req.query.formId === 'string' && req.query.formId ? req.query.formId : 'default';
+    let config = formId !== 'default' ? await prisma.bookingFormConfig.findUnique({ where: { id: formId } }) : null;
+    if (!config) {
+      config = await prisma.bookingFormConfig.findUnique({ where: { id: 'default' } });
+    }
     res.json(config || { steps: [] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Admin: list every custom (non-default) form for the per-event dropdown.
+router.get('/list', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    const configs = await prisma.bookingFormConfig.findMany({
+      where: { id: { not: 'default' } },
+      select: { id: true, name: true },
+      orderBy: { updatedAt: 'desc' }
+    });
+    res.json(configs);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });
@@ -86,9 +106,11 @@ router.get('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
 
 router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
+    const data: any = { steps: req.body.steps };
+    if (req.body.name !== undefined) data.name = req.body.name;
     const config = await prisma.bookingFormConfig.update({
       where: { id: req.params.id as string },
-      data: { steps: req.body.steps }
+      data
     });
     res.json(config);
   } catch (error: any) {

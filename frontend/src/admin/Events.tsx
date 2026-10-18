@@ -30,7 +30,7 @@ import {
     TabbedFormTabs,
     Toolbar as RaToolbar
 } from 'react-admin';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RichTextInput } from 'ra-input-rich-text';
 import { Grid, Box, Typography, Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -459,6 +459,105 @@ const VenueTabContent = () => (
     </Grid>
 );
 
+// Old's real "Individuelles Buchungsformular" card (layouts/event/edit/
+// booking.php's card-booking-override) - lets this one event override the
+// site's default Buchungs-Formular with its own, or reuse an existing
+// custom form already created for another event. Create/delete are instant
+// API calls (not part of the event's own Speichern) - same as old's
+// AJAX-driven bookingform.create/.delete tasks - followed by a full reload
+// rather than react-admin's refresh(), since this field's own value needs
+// to actually change in the still-open form, not just the cached record
+// (the same reliability problem EventDatesManager's cross-record
+// navigation hit earlier - a plain refresh() doesn't reliably restate
+// already-mounted form fields).
+const CustomBookingFormCard = () => {
+    const notify = useNotify();
+    const [forms, setForms] = useState<{ id: string; name: string | null }[]>([]);
+
+    useEffect(() => {
+        const token = localStorage.getItem('auth');
+        fetch(`${API}/bookingFormConfig/list`, { headers: { Authorization: `Bearer ${token}` } })
+            .then((res) => (res.ok ? res.json() : []))
+            .then(setForms)
+            .catch(() => {});
+    }, []);
+
+    return (
+        <FormDataConsumer>
+            {({ formData }) => {
+                const eventId = formData?.id;
+                const currentId: string = formData?.customBookingFormId || '';
+
+                const handleCreate = async () => {
+                    if (!eventId) { notify('Bitte die Veranstaltung zuerst speichern', { type: 'warning' }); return; }
+                    const token = localStorage.getItem('auth');
+                    const res = await fetch(`${API}/events/${eventId}/custom-booking-form`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        notify('Fehler beim Erstellen', { type: 'error' });
+                    }
+                };
+
+                const handleDelete = async () => {
+                    if (!eventId) return;
+                    if (!window.confirm('Individuelles Buchungsformular wirklich löschen? Das Standard-Buchungsformular wird dann wieder verwendet.')) return;
+                    const token = localStorage.getItem('auth');
+                    const res = await fetch(`${API}/events/${eventId}/custom-booking-form`, {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        notify('Fehler beim Löschen', { type: 'error' });
+                    }
+                };
+
+                return (
+                    <MCard title="Individuelles Buchungs-Formular">
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                            Hier kann das Standard-Buchungsformular überschrieben oder ein bestehendes
+                            benutzerdefiniertes Buchungsformular ausgewählt werden. Auf diese Weise können
+                            zusätzliche Felder hinzugefügt werden oder sogar das gesamte Formular geändert werden.{' '}
+                            <a href="/admin/booking-form-config" target="_blank" rel="noreferrer">
+                                Standard-Buchungsformular bearbeiten
+                            </a>
+                        </Typography>
+
+                        <SelectInput
+                            source="customBookingFormId"
+                            label="Formular"
+                            fullWidth
+                            choices={[
+                                { id: '', name: 'Kein benutzerdefiniertes Buchungsformular' },
+                                ...forms.map((f) => ({ id: f.id, name: f.name || f.id })),
+                            ]}
+                        />
+
+                        {!currentId && (
+                            <RaButton label="Individuelles Buchungs-Formular erstellen" onClick={handleCreate} variant="contained" fullWidth />
+                        )}
+                        {currentId && (
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <RaButton
+                                    label="Verwalten"
+                                    onClick={() => window.open(`/admin/booking-form-config/${currentId}`, '_blank')}
+                                    variant="contained"
+                                />
+                                <RaButton label="Löschen" onClick={handleDelete} color="error" />
+                            </Box>
+                        )}
+                    </MCard>
+                );
+            }}
+        </FormDataConsumer>
+    );
+};
+
 const BookingTabContent = () => (
     <Grid container spacing={2} sx={{ width: '100%' }}>
         <Grid size={{ xs: 12, md: 8 }}>
@@ -500,6 +599,7 @@ const BookingTabContent = () => (
             </FormDataConsumer>
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
+            <CustomBookingFormCard />
             <MTipsCard
                 title="Tipps für die Buchung"
                 blocks={[

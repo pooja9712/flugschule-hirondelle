@@ -1,3 +1,4 @@
+import { useParams } from 'react-router-dom';
 import {
     Form,
     TextInput,
@@ -23,7 +24,15 @@ import SaveIcon from '@mui/icons-material/Save';
 // missing downstream integration, is why this admin page's changes never
 // affected anything: it was never possible to actually save a change here.
 export const BookingFormBuilder = () => {
-    const { data, isLoading, error } = useGetOne('bookingFormConfig', { id: 'default' });
+    // Old's real "Individuelles Buchungsformular" (layouts/event/edit/
+    // booking.php) reuses this exact same builder for a per-event custom
+    // form, just pointed at that form's own id instead of "default" - same
+    // thing here via an optional :id route param (see Events.tsx's
+    // Buchungs-Formular card and AdminApp.tsx's two routes to this page).
+    const { id: routeId } = useParams<{ id?: string }>();
+    const id = routeId || 'default';
+    const isCustom = id !== 'default';
+    const { data, isLoading, error } = useGetOne('bookingFormConfig', { id });
     const notify = useNotify();
     const refresh = useRefresh();
     const [update, { isLoading: isSaving }] = useUpdate();
@@ -34,7 +43,7 @@ export const BookingFormBuilder = () => {
     const save = (formData: any) => {
         update(
             'bookingFormConfig',
-            { id: 'default', data: formData, previousData: data },
+            { id, data: formData, previousData: data },
             {
                 onSuccess: () => {
                     notify('Buchungs-Formular gespeichert', { type: 'success' });
@@ -52,7 +61,7 @@ export const BookingFormBuilder = () => {
             <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Typography variant="h5" gutterBottom>
-                        Buchungs-Formular (Standard Booking Form)
+                        {isCustom ? (data?.name || 'Individuelles Buchungs-Formular') : 'Buchungs-Formular (Standard Booking Form)'}
                     </Typography>
                 </Box>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>

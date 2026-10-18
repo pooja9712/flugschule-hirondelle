@@ -299,6 +299,7 @@ export const AdminApp = () => {
               }
             />
             <Route path="/booking-form-config" element={<Authenticated><BookingFormBuilder /></Authenticated>} />
+            <Route path="/booking-form-config/:id" element={<Authenticated><BookingFormBuilder /></Authenticated>} />
             <Route path="/service-auftrag-form" element={<Authenticated><ServiceAuftragFormBuilder /></Authenticated>} />
             <Route path="/forms/:formId/edit" element={<Authenticated><ServiceAuftragFormBuilder /></Authenticated>} />
             <Route path="/forms/:formId/fields" element={<Authenticated><FormFieldsEditor /></Authenticated>} />

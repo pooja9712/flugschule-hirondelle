@@ -127,6 +127,12 @@ model Event {
   views                Int           @default(0)
   seriesId             String?       // groups every date-occurrence generated together (single add or batch-recurring)
   cancelled            Boolean       @default(false) // distinct from `published` - a cancelled date stays visible but not bookable
+  // Old's real "Individuelles Buchungsformular" (layouts/event/edit/
+  // booking.php's card-booking-override) - lets one event override the
+  // site's default BookingFormConfig with its own. Null = use the
+  // "default" BookingFormConfig row, same as every event before this field
+  // existed.
+  customBookingFormId  String?
   // Old Matukio's allday/showbegin/showend/showbooked toggles
   // (administrator/components/com_matukio/models/events.php) - let an
   // admin hide a specific time-of-day for a multi-day/all-day event (e.g.
@@ -377,6 +383,9 @@ model AdBanner {
 
 model BookingFormConfig {
   id        String   @id @default("default")
+  // NEW - label for a per-event custom form (Event.customBookingFormId) in
+  // its admin dropdown/list; null for the single site-wide "default" row.
+  name      String?
   steps     Json
   updatedAt DateTime @updatedAt
 }
