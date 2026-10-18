@@ -37,6 +37,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import BadgeIcon from '@mui/icons-material/Badge';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { formatBirthDateDisplay, formatBirthDateForInput } from '../utils/birthDate';
 
 const salutationChoices = ['Bitte wählen', 'Herr', 'Frau', 'Divers'];
@@ -437,6 +438,13 @@ const BookingListActions = () => {
             <RaButton label="Aktivieren" onClick={() => run('/bulk/activate', { ids: selectedIds })}><CheckCircleIcon /></RaButton>
             <RaButton label="Ausstehend" onClick={() => run('/bulk/pending', { ids: selectedIds })}><CancelIcon /></RaButton>
             <RaButton label="Ablehnen" onClick={() => openCompose(setRejectOpen)} />
+            {isTrashView && (
+                // Restores without ever emailing the customer - "Aktivieren"
+                // stays available too in this view, but it DOES send the
+                // Buchungsbestätigung mail (same as always), so this is the
+                // one to use for a plain "undo my accidental delete".
+                <RaButton label="Wiederherstellen" onClick={() => run('/bulk/restore', { ids: selectedIds })}><RestoreIcon /></RaButton>
+            )}
             {!isTrashView && (
                 <RaButton label="Papierkorb" onClick={() => run('/bulk/wastebasket', { ids: selectedIds })} />
             )}

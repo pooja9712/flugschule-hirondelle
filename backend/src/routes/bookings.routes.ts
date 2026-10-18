@@ -397,6 +397,23 @@ router.post('/bulk/activate', authenticateJWT, authorizeAdmin, async (req, res) 
   }
 });
 
+// Restores a wastebasket (CANCELLED) booking back to CONFIRMED without ever
+// emailing the customer - unlike /bulk/activate (which exists for genuinely
+// confirming a live booking and deliberately does notify), undoing an
+// accidental delete isn't an event the customer needs to hear about, and old
+// Matukio's own "always notify on every status change" behavior was never
+// something to replicate here (the admin explicitly asked not to).
+router.post('/bulk/restore', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    const { ids } = req.body as { ids: string[] };
+    await prisma.booking.updateMany({ where: { id: { in: ids } }, data: { status: 'CONFIRMED' } });
+    res.json({ message: `${ids.length} Buchung(en) wiederhergestellt.` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 router.post('/bulk/pending', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
     const { ids } = req.body as { ids: string[] };
