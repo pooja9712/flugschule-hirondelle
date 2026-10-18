@@ -1,28 +1,39 @@
 import { useParams } from 'react-router-dom';
 import {
-    Form,
+    Edit,
+    SimpleForm,
     TextInput,
     BooleanInput,
     ArrayInput,
     SimpleFormIterator,
-    ResourceContextProvider,
     useGetOne,
-    useUpdate,
     useNotify,
-    useRefresh,
+    Toolbar as RaToolbar,
+    SaveButton,
 } from 'react-admin';
-import { Typography, Card, CardContent, CircularProgress, Alert, Box, Button } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 
-// Uses the same plain <Form record={...} onSubmit={...}> pattern already
-// proven working in TemplatesBuilder.tsx, not <Edit><SimpleForm>: nesting
-// SimpleForm's onSubmit override inside <Edit record={...}> (the original
-// version of this component) never actually fired a save request at all -
-// <Edit> normally drives its own record-fetching/submission via an
-// EditController and doesn't cleanly support a raw record prop override,
-// so the "Speichern" button silently did nothing. That bug, not just a
-// missing downstream integration, is why this admin page's changes never
-// affected anything: it was never possible to actually save a change here.
+// No DeleteButton on this toolbar: deleting a custom form's row directly
+// here would leave the event that references it (Event.customBookingFormId)
+// pointing at nothing - deleting one is done through the "Löschen" button
+// on the event's own Buchung tab (Events.tsx's CustomBookingFormCard),
+// which unlinks the event first.
+const BookingFormToolbar = () => (
+    <RaToolbar>
+        <SaveButton />
+    </RaToolbar>
+);
+import { Typography, Card, CardContent, Alert, Box } from '@mui/material';
+
+// Switched from a bare <Form record={data}> (TemplatesBuilder.tsx's pattern,
+// which only ever edits plain scalar TextInputs) to a real <Edit>/<SimpleForm>
+// (the pattern already proven working for ArrayInput/SimpleFormIterator
+// elsewhere - Gallery.tsx's earlier version). <Form> alone never rendered
+// the ArrayInput's rows at all - no error, no console warning, it just
+// silently produced nothing below the title, which <Edit>/<SimpleForm>'s
+// full react-hook-form + FormGroupsProvider setup doesn't have a problem
+// with. <Edit> drives its own getOne/update against resource="bookingFormConfig"
+// id={id} - the same generic GET/PUT /:id this page always called - so no
+// backend change was needed, only this component's own wiring.
 export const BookingFormBuilder = () => {
     // Old's real "Individuelles Buchungsformular" (layouts/event/edit/
     // booking.php) reuses this exact same builder for a per-event custom
@@ -32,36 +43,17 @@ export const BookingFormBuilder = () => {
     const { id: routeId } = useParams<{ id?: string }>();
     const id = routeId || 'default';
     const isCustom = id !== 'default';
-    const { data, isLoading, error } = useGetOne('bookingFormConfig', { id });
     const notify = useNotify();
-    const refresh = useRefresh();
-    const [update, { isLoading: isSaving }] = useUpdate();
-
-    if (isLoading) return <CircularProgress sx={{ m: 4 }} />;
-    if (error) return <div>Error loading configuration</div>;
-
-    const save = (formData: any) => {
-        update(
-            'bookingFormConfig',
-            { id, data: formData, previousData: data },
-            {
-                onSuccess: () => {
-                    notify('Buchungs-Formular gespeichert', { type: 'success' });
-                    refresh();
-                },
-                onError: (error: any) => {
-                    notify(`Fehler beim Speichern: ${error.message}`, { type: 'error' });
-                }
-            }
-        );
-    };
+    // Only used for the title text above - the actual field-editing/saving
+    // below is driven by <Edit>'s own independent fetch, not this one.
+    const { data: titleData } = useGetOne('bookingFormConfig', { id });
 
     return (
         <Card sx={{ mt: 2, mb: 4, maxWidth: '1000px', mx: 'auto' }}>
             <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Typography variant="h5" gutterBottom>
-                        {isCustom ? (data?.name || 'Individuelles Buchungs-Formular') : 'Buchungs-Formular (Standard Booking Form)'}
+                        {isCustom ? (titleData?.name || 'Individuelles Buchungs-Formular') : 'Buchungs-Formular (Standard Booking Form)'}
                     </Typography>
                 </Box>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
@@ -77,8 +69,19 @@ export const BookingFormBuilder = () => {
                     (Gestaffelte Gebühren / Zusätzliche buchbare Optionen) und sind hier nicht enthalten.
                 </Alert>
 
-                <ResourceContextProvider value="bookingFormConfig">
-                    <Form record={data} onSubmit={save}>
+                <Edit
+                    resource="bookingFormConfig"
+                    id={id}
+                    redirect={false}
+                    mutationMode="pessimistic"
+                    actions={false}
+                    sx={{ '& .RaEdit-card': { boxShadow: 'none', mt: 0 } }}
+                    mutationOptions={{
+                        onSuccess: () => notify('Buchungs-Formular gespeichert', { type: 'success' }),
+                        onError: (error: any) => notify(`Fehler beim Speichern: ${error.message}`, { type: 'error' }),
+                    }}
+                >
+                    <SimpleForm toolbar={<BookingFormToolbar />}>
                         <ArrayInput source="steps" label="Formular-Schritte (Steps)">
                             <SimpleFormIterator getItemLabel={(index) => `Schritt ${index + 1}`}>
                                 <TextInput source="id" label="Schritt ID (z.B. step-1)" required />
@@ -93,14 +96,8 @@ export const BookingFormBuilder = () => {
                                 </ArrayInput>
                             </SimpleFormIterator>
                         </ArrayInput>
-
-                        <Box sx={{ mt: 3 }}>
-                            <Button type="submit" variant="contained" color="success" startIcon={<SaveIcon />} disabled={isSaving}>
-                                Speichern
-                            </Button>
-                        </Box>
-                    </Form>
-                </ResourceContextProvider>
+                    </SimpleForm>
+                </Edit>
             </CardContent>
         </Card>
     );
