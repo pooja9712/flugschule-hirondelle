@@ -86,7 +86,8 @@ export const SafeHtml = ({ html, className }: { html: string; className?: string
   // many images this content happens to contain) instead of per-image.
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'IMG') {
+    // An image inside a link (a linked card or button) follows the link.
+    if (target.tagName === 'IMG' && !target.closest('a')) {
       const img = target as HTMLImageElement;
       open(img.currentSrc || img.src, img.alt);
     }

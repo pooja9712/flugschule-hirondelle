@@ -4,19 +4,8 @@ import { Box, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mu
 import CodeIcon from '@mui/icons-material/Code';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { ELEMENT_CLIPBOARD_CSS, registerElementClipboard } from './editorElementClipboard';
-
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('auth')}` });
-
-const uploadFile = (file: Blob, filename: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file, filename);
-  return fetch('/api/upload', { method: 'POST', headers: authHeaders(), body: formData })
-    .then((res) => res.json().then((data) => ({ res, data })))
-    .then(({ res, data }) => {
-      if (res.ok && data.url) return data.url as string;
-      throw new Error(data.message || 'Fehler beim Upload');
-    });
-};
+import { openMediaBrowser, uploadEditorFile as uploadFile } from './editorMediaBrowser';
+import { COLOR_MAP, loadPageLinkList, registerJoomlaButtons } from './editorJoomlaButtons';
 
 // The editor canvas is an iframe, so it doesn't see the site's stylesheet on
 // its own. Hand it whatever the admin document has loaded: Vite injects the
@@ -111,9 +100,10 @@ export const RichHtmlInput = ({
               // Edit menu / right-click menu use the element clipboard instead
               // of TinyMCE's own paste, which can only tell the user to press Ctrl+V.
               menu: {
-                edit: { title: 'Edit', items: 'undo redo | clipboardCut clipboardCopy clipboardPaste pastetext | selectParent duplicateBlock | selectall | searchreplace' },
+                edit: { title: 'Edit', items: 'undo redo | clipboardCut clipboardCopy clipboardPaste pastetext | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps | selectall | searchreplace' },
+                insert: { title: 'Insert', items: 'image link media hbMediaImage hbMediaFile codesample inserttable | hbTemplatesMenu | charmap emoticons hr | pagebreak hbReadmore nonbreaking anchor | insertdatetime accordion' },
               },
-              contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock | link image table',
+              contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps | link image table',
               toolbar_mode: 'sliding',
               toolbar_sticky: true,
               plugins: [
@@ -124,34 +114,36 @@ export const RichHtmlInput = ({
               ],
               toolbar:
                 'bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | lineheight | styles | ' +
-                'clipboardCopy clipboardCut clipboardPaste selectParent duplicateBlock | ' +
+                'clipboardCopy clipboardCut clipboardPaste selectParent duplicateBlock | elementProps moveElementUp moveElementDown deleteElement | ' +
                 'blocks fontfamily fontsize | searchreplace | bullist numlist | outdent indent | undo redo | ' +
                 'link unlink anchor image media | code | forecolor backcolor | fullscreen | table accordion | ' +
                 'subscript superscript | charmap emoticons hr | ltr rtl | pastetext | ' +
-                'visualchars visualblocks nonbreaking blockquote pagebreak | customPrint preview insertdatetime | removeformat',
+                'visualchars visualblocks nonbreaking blockquote hbTemplates pagebreak | customPrint preview codesample insertdatetime removeformat | hbCmsContent',
               quickbars_selection_toolbar: 'bold italic underline | forecolor | quicklink h2 h3 blockquote',
               quickbars_insert_toolbar: false,
               font_family_formats: FONT_FAMILIES,
               font_size_formats: '10px 12px 14px 15px 16px 18px 20px 24px 28px 32px 36px 48px 60px',
               line_height_formats: '1 1.15 1.3 1.5 1.75 2 2.5 3',
+              color_map: COLOR_MAP,
+              color_cols: 8,
+              custom_colors: true,
+              // Joomla's link dialog offers the site's own pages as targets.
+              link_list: loadPageLinkList,
               image_advtab: true,
               image_caption: true,
               image_title: true,
               automatic_uploads: true,
               file_picker_types: 'image media file',
+              // Like Joomla's image button: pick from the media folders
+              // (Admin > Medien) or upload a new file there.
               file_picker_callback: (callback, _value, meta) => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                if (meta.filetype === 'image') input.accept = 'image/*';
-                else if (meta.filetype === 'media') input.accept = 'video/*,audio/*';
-                input.onchange = () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  uploadFile(file, file.name)
-                    .then((url) => callback(url, { title: file.name, text: file.name }))
-                    .catch((err) => alert(err.message));
-                };
-                input.click();
+                const imagesOnly = meta.filetype === 'image';
+                const accept = imagesOnly ? 'image/*' : meta.filetype === 'media' ? 'video/*,audio/*' : '*/*';
+                openMediaBrowser({ imagesOnly, accept }).then((url) => {
+                  if (!url) return;
+                  const name = decodeURIComponent(url.split('/').pop() || url);
+                  callback(url, { title: name, text: name });
+                });
               },
               images_upload_handler: (blobInfo) =>
                 uploadFile(blobInfo.blob(), blobInfo.filename()),
@@ -175,6 +167,8 @@ export const RichHtmlInput = ({
                 // Copy/cut/paste whole elements (boxes, images, text), plus
                 // "select parent" and "duplicate" - see editorElementClipboard.ts.
                 registerElementClipboard(editor);
+                // Joomla's "CMS-Inhalt" and "Vorlagen" buttons.
+                registerJoomlaButtons(editor);
 
                 // The open-source TinyMCE build has no print button.
                 editor.ui.registry.addButton('customPrint', {
