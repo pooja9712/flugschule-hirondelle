@@ -495,10 +495,18 @@ export const Events = () => {
                   <div
                     key={event.id}
                     className="rounded-lg shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow flex flex-col sm:flex-row"
-                    // Old's real .mat_event_completed CSS class (rgba(255,60,59,.06)) -
-                    // purely cosmetic once the event's own end time has passed,
-                    // never gates the button/traffic-light (see isBookable above).
-                    style={{ backgroundColor: isPastEvent ? 'rgba(255,60,59,0.06)' : '#fff' }}
+                    // Old's real .mat_event_completed/.mat_hot_event/.mat_top_event
+                    // CSS classes (media/com_matukio/css/modern.css) - purely
+                    // cosmetic, never gate the button/traffic-light (see
+                    // isBookable above). Hot (#f2dede) wins over top (#dff0d8)
+                    // when an event is somehow both, matching old's own CSS
+                    // cascade order (.mat_hot_event is declared after
+                    // .mat_top_event, so it wins a tie on equal specificity).
+                    style={{
+                      backgroundColor: event.isHotEvent ? '#f2dede'
+                        : event.isTopEvent ? '#dff0d8'
+                        : isPastEvent ? 'rgba(255,60,59,0.06)' : '#fff'
+                    }}
                   >
                     {/* Image / Date block - old's real .mat_event_img is just
                         `width:100%` with NO forced height (verified against
@@ -556,6 +564,10 @@ export const Events = () => {
                             )}
                             <h3 className={`text-xl font-bold text-gray-900 ${event.cancelled ? 'line-through opacity-60' : ''}`}>
                               <Link to={`/buchungskalender/${event.id}`} className="hover:underline">{event.title}</Link>
+                              {/* Old's exact COM_MATUKIO_HOT string ("*Hot*"),
+                                  shown right after the title - eventlist/tmpl/
+                                  modern_eventlist.php's $hot_event_text. */}
+                              {event.isHotEvent && <span className="ml-1 text-red-700 font-bold">*Hot*</span>}
                             </h3>
                           </div>
                           <div className="text-right">

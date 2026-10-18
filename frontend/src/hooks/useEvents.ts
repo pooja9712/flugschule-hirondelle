@@ -107,6 +107,13 @@ export interface CalendarEvent {
     value?: number;
     perPlace?: boolean;
   }[];
+  // Old's real top_event/hot_event (admin "Veranstaltungs-Anzeige" card) -
+  // CSS classes mat_top_event/mat_hot_event + a "HOT" badge on every
+  // listing the event appears in (eventlist/tmpl/modern_eventlist.php),
+  // plus top_event feeding a separate "Featured Events" widget
+  // (views/featured, `WHERE top_event = 1`).
+  isTopEvent?: boolean;
+  isHotEvent?: boolean;
 }
 
 export const useEvents = () => {
@@ -150,7 +157,9 @@ export const useEvents = () => {
           showRegistrationDeadline: e.showRegistrationDeadline,
           tieredFees: e.tieredFees,
           eventTieredFees: e.eventTieredFees,
-          extraFeeOptions: e.extraFeeOptions
+          extraFeeOptions: e.extraFeeOptions,
+          isTopEvent: e.isTopEvent,
+          isHotEvent: e.isHotEvent
         }));
         setEvents(parsed);
         setLoading(false);

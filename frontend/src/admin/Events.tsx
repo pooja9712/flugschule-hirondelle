@@ -699,27 +699,36 @@ const AdjustmentsTabContent = () => (
 const TermineTabContent = ({ isCreate }: { isCreate?: boolean }) => (
     <Grid container spacing={2} sx={{ width: '100%' }}>
         <Grid size={{ xs: 12, md: 8 }}>
-            <MCard title="Termin">
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                    <DateTimeInput source="startDate" label="Beginn" required fullWidth />
-                    <DateTimeInput source="endDate" label="Ende" fullWidth />
-                    <DateTimeInput source="registrationDeadline" label="Anmeldeschluss" fullWidth />
-                </Box>
-                <Grid container spacing={2} sx={{ mt: 1 }}>
-                    <Grid size={{ xs: 6 }}>
-                        <TextInput source="bookingNumber" label="Nummer" helperText="Veranstaltungs-Nummer, z.B. 5/26 (Optional)" fullWidth />
+            {/* Only shown while creating a brand-new event (no id yet, so
+                there's no row in "Weitere Termine dieser Serie" below to
+                edit it through). Once the event exists, this same Beginn/
+                Ende/Anmeldeschluss/Nummer/Titel Überschreibung data is
+                already editable inline by clicking the pencil on that
+                event's own row in the table below (EventDatesManager) -
+                this card stayed visible there too and just duplicated it. */}
+            {isCreate && (
+                <MCard title="Termin">
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <DateTimeInput source="startDate" label="Beginn" required fullWidth />
+                        <DateTimeInput source="endDate" label="Ende" fullWidth />
+                        <DateTimeInput source="registrationDeadline" label="Anmeldeschluss" fullWidth />
+                    </Box>
+                    <Grid container spacing={2} sx={{ mt: 1 }}>
+                        <Grid size={{ xs: 6 }}>
+                            <TextInput source="bookingNumber" label="Nummer" helperText="Veranstaltungs-Nummer, z.B. 5/26 (Optional)" fullWidth />
+                        </Grid>
+                        <Grid size={{ xs: 6 }}>
+                            <TextInput source="titleOverride" label="Titel Überschreibung" helperText="Hier können Sie den Titel für diesen Termin überschreiben" fullWidth />
+                        </Grid>
+                        <Grid size={{ xs: 6 }}>
+                            <TextInput source="eventNumber" label="Interne Referenz-ID" helperText="Nur intern für die Serien-Zuordnung genutzt, nicht auf der Webseite sichtbar" fullWidth disabled />
+                        </Grid>
+                        <Grid size={{ xs: 6 }}>
+                            <NumberInput source="views" label="Seitenaufrufe" fullWidth disabled />
+                        </Grid>
                     </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <TextInput source="titleOverride" label="Titel Überschreibung" helperText="Hier können Sie den Titel für diesen Termin überschreiben" fullWidth />
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <TextInput source="eventNumber" label="Interne Referenz-ID" helperText="Nur intern für die Serien-Zuordnung genutzt, nicht auf der Webseite sichtbar" fullWidth disabled />
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <NumberInput source="views" label="Seitenaufrufe" fullWidth disabled />
-                    </Grid>
-                </Grid>
-            </MCard>
+                </MCard>
+            )}
 
             {!isCreate && (
                 <MCard title="Weitere Termine dieser Serie">
