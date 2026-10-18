@@ -638,6 +638,7 @@ router.post('/:id/custom-booking-form', authenticateJWT, authorizeAdmin, async (
     const defaultConfig = await prisma.bookingFormConfig.findUnique({ where: { id: 'default' } });
     const newConfig = await prisma.bookingFormConfig.create({
       data: {
+        id: crypto.randomUUID(),
         name: `Formular: ${event.title}`,
         steps: defaultConfig?.steps ?? [{ id: 'step-1', title: 'Anmeldung', fields: [] }],
       },

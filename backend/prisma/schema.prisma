@@ -382,7 +382,13 @@ model AdBanner {
 }
 
 model BookingFormConfig {
-  id        String   @id @default("default")
+  // No @default("default") here: that's a literal static default, not a
+  // generator, so every row created without an explicit id would collide
+  // on the same "default" primary key as the singleton row. The one real
+  // "default" row keeps that id because the code that creates it always
+  // passes id: 'default' explicitly (see bookingFormConfig.routes.ts);
+  // every other (per-event custom) row gets a real generated id instead.
+  id        String   @id
   // NEW - label for a per-event custom form (Event.customBookingFormId) in
   // its admin dropdown/list; null for the single site-wide "default" row.
   name      String?
