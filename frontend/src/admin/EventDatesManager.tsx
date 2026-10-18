@@ -465,21 +465,21 @@ export const EventDatesManager = () => {
                                         Beginn/Ende/Anmeldeschluss as three separate lines - stacked
                                         here in one cell instead of three new columns so the
                                         already-cramped table doesn't get wider. */}
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 220 }}>
                                         <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>Beginn:</Typography>
-                                            <Typography variant="body2">{new Date(d.startDate).toLocaleString('de-DE')}</Typography>
+                                            <Typography variant="caption" color="text.secondary" sx={{ width: 112, flexShrink: 0, whiteSpace: 'nowrap' }}>Beginn:</Typography>
+                                            <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{new Date(d.startDate).toLocaleString('de-DE')}</Typography>
                                         </Box>
                                         {d.endDate && (
                                             <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>Ende:</Typography>
-                                                <Typography variant="body2">{new Date(d.endDate).toLocaleString('de-DE')}</Typography>
+                                                <Typography variant="caption" color="text.secondary" sx={{ width: 112, flexShrink: 0, whiteSpace: 'nowrap' }}>Ende:</Typography>
+                                                <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{new Date(d.endDate).toLocaleString('de-DE')}</Typography>
                                             </Box>
                                         )}
                                         {d.registrationDeadline && (
                                             <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>Anmeldeschluss:</Typography>
-                                                <Typography variant="body2">{new Date(d.registrationDeadline).toLocaleString('de-DE')}</Typography>
+                                                <Typography variant="caption" color="text.secondary" sx={{ width: 112, flexShrink: 0, whiteSpace: 'nowrap' }}>Anmeldeschluss:</Typography>
+                                                <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{new Date(d.registrationDeadline).toLocaleString('de-DE')}</Typography>
                                             </Box>
                                         )}
                                     </Box>
