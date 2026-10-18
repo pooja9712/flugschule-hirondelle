@@ -116,7 +116,7 @@ export const EventDetailsView: React.FC<EventDetailsViewProps> = ({ event, addit
       <div className="flex justify-between items-end mb-6 border-b border-gray-200 pb-4">
         <div>
           <h1 className="font-luxury text-4xl md:text-5xl text-luxury-dark uppercase tracking-wide mb-4">
-            {event.title}
+            {event.titleOverride || event.title}
             {event.cancelled && (
               <span className="ml-4 align-middle text-sm font-sans font-bold uppercase tracking-widest text-red-700 bg-red-100 px-3 py-1 rounded-sm">
                 Storniert
@@ -169,6 +169,23 @@ export const EventDetailsView: React.FC<EventDetailsViewProps> = ({ event, addit
               <span className="font-semibold">{event.category}</span>
             </div>
           </div>
+
+          {/* Zusätzliche Tage - new (no old Matukio equivalent), display-
+              only extra day/time entries beyond the event's own start/end
+              range. Was only ever rendered in the admin edit form before. */}
+          {Array.isArray(event.additionalDays) && event.additionalDays.length > 0 && (
+            <div className="mt-2 text-gray-500 text-sm">
+              <span className="font-semibold text-gray-600">Zusätzliche Tage: </span>
+              {event.additionalDays.map((d: { date: string; startTime: string; endTime: string }, i: number) => (
+                <span key={i}>
+                  {i > 0 && ', '}
+                  {new Date(d.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {d.startTime && ` · ${d.startTime}`}
+                  {d.endTime && ` - ${d.endTime}`}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         
         <div className="flex items-center gap-1 print:hidden">

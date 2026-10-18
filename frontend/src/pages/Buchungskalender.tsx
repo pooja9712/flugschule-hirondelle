@@ -446,7 +446,8 @@ export const Buchungskalender = () => {
                             // it never truncates/abbreviates by duration or
                             // length, it always shows the full title
                             // otherwise, wrapped across lines if needed.
-                            const displayText = SHORT_TITLES[item.event.title] || item.event.title;
+                            const baseTitle = item.event.titleOverride || item.event.title;
+                            const displayText = SHORT_TITLES[baseTitle] || baseTitle;
 
                             return (
                               <td
@@ -458,7 +459,7 @@ export const Buchungskalender = () => {
                                     ${(item.event.detailImageUrl || item.event.imageUrl) ? `
                                     <img src='${item.event.detailImageUrl || item.event.imageUrl}' class='w-full h-32 object-cover rounded-sm mb-4' />
                                     ` : ''}
-                                    <h4 class='font-luxury text-2xl text-luxury-dark mb-1'>${item.event.title}${item.event.isHotEvent ? " <span class='ml-1 text-red-700 font-bold'>*Hot*</span>" : ''}${item.event.cancelled ? " <span class='text-red-700 text-xs uppercase font-bold align-middle bg-red-100 px-2 py-1 rounded-sm'>Storniert</span>" : ''}</h4>
+                                    <h4 class='font-luxury text-2xl text-luxury-dark mb-1'>${baseTitle}${item.event.isHotEvent ? " <span class='ml-1 text-red-700 font-bold'>*Hot*</span>" : ''}${item.event.cancelled ? " <span class='text-red-700 text-xs uppercase font-bold align-middle bg-red-100 px-2 py-1 rounded-sm'>Storniert</span>" : ''}</h4>
                                     <div class='flex flex-col gap-1 mb-4 pb-4 border-b border-gray-100'>
                                       <div class='flex items-center gap-2 text-[12px] text-gray-500 font-semibold'>
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path></svg>

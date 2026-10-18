@@ -114,6 +114,9 @@ export interface CalendarEvent {
   // (views/featured, `WHERE top_event = 1`).
   isTopEvent?: boolean;
   isHotEvent?: boolean;
+  // Old's real override_title (per-date title override) - was only ever
+  // applied in the admin form, never on any public page.
+  titleOverride?: string;
 }
 
 export const useEvents = () => {
@@ -159,7 +162,8 @@ export const useEvents = () => {
           eventTieredFees: e.eventTieredFees,
           extraFeeOptions: e.extraFeeOptions,
           isTopEvent: e.isTopEvent,
-          isHotEvent: e.isHotEvent
+          isHotEvent: e.isHotEvent,
+          titleOverride: e.titleOverride
         }));
         setEvents(parsed);
         setLoading(false);

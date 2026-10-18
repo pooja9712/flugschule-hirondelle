@@ -563,7 +563,7 @@ export const Events = () => {
                               </span>
                             )}
                             <h3 className={`text-xl font-bold text-gray-900 ${event.cancelled ? 'line-through opacity-60' : ''}`}>
-                              <Link to={`/buchungskalender/${event.id}`} className="hover:underline">{event.title}</Link>
+                              <Link to={`/buchungskalender/${event.id}`} className="hover:underline">{event.titleOverride || event.title}</Link>
                               {/* Old's exact COM_MATUKIO_HOT string ("*Hot*"),
                                   shown right after the title - eventlist/tmpl/
                                   modern_eventlist.php's $hot_event_text. */}
