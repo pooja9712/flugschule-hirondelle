@@ -123,6 +123,25 @@ const loadDownloads = (): Promise<DownloadCategory[]> =>
 
 const pageLinkList = () => new Promise<LinkItem[]>((resolve) => loadPageLinkList(resolve));
 
+// YouTube id (+ start second) from any usual link: watch?v=, youtu.be/,
+// /embed/, /shorts/, /live/, or a bare 11-character id.
+export const parseYouTube = (input: string): { id: string; start: number } | null => {
+  const v = input.trim();
+  const m = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/))([\w-]{11})/.exec(v)
+    || /^([\w-]{11})$/.exec(v);
+  if (!m) return null;
+  const t = /[?&](?:t|start)=(?:(\d+)h)?(?:(\d+)m)?(\d+)s?/.exec(v);
+  const start = t ? (Number(t[1] || 0) * 3600) + (Number(t[2] || 0) * 60) + Number(t[3] || 0) : 0;
+  return { id: m[1], start };
+};
+
+const youTubeEmbed = (id: string, start: number, title: string) =>
+  `<div data-hb-video="youtube" style="position:relative;width:100%;padding-bottom:56.25%;height:0;overflow:hidden;margin:0 0 1.5rem;">`
+  + `<iframe src="https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ''}" title="${title.replace(/"/g, '&quot;') || 'YouTube-Video'}" `
+  + 'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" '
+  + 'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" '
+  + 'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe></div>';
+
 export const registerJoomlaButtons = (editor: Editor) => {
   const insertBlock = (html: string) => {
     // Inside a linked card/button a block can't go at the caret (a link in
@@ -172,6 +191,56 @@ export const registerJoomlaButtons = (editor: Editor) => {
 
   const insertReadmore = () => insertBlock('<hr id="system-readmore">');
 
+  // "YouTube-Video": paste a link, get a responsive embed. With a video
+  // selected (or its block picked) it replaces that video.
+  const currentVideo = (): { box: HTMLElement | null; src: string; title: string } => {
+    const node = editor.selection.getNode() as HTMLElement;
+    const box = (node.closest?.('[data-hb-video]') || node.querySelector?.('[data-hb-video]')) as HTMLElement | null;
+    const frame = (box || node).querySelector?.('iframe') || (node.nodeName === 'IFRAME' ? node : null);
+    const src = frame?.getAttribute('src') || node.getAttribute?.('data-mce-p-src') || '';
+    return { box: box || (frame ? (node.closest('.mce-preview-object') as HTMLElement | null) || node : null), src, title: frame?.getAttribute('title') || '' };
+  };
+  const openYouTubeDialog = () => {
+    const current = currentVideo();
+    const known = parseYouTube(current.src);
+    editor.windowManager.open({
+      title: known ? 'YouTube-Video ändern' : 'YouTube-Video einfügen',
+      body: {
+        type: 'panel',
+        items: [
+          { type: 'input', name: 'url', label: 'YouTube-Link (z.B. https://www.youtube.com/watch?v=… oder https://youtu.be/…)' },
+          { type: 'input', name: 'title', label: 'Titel (für Barrierefreiheit, optional)' },
+          { type: 'htmlpanel', html: '<p style="margin:4px 0 0;color:#666">Das Video wird in voller Breite (16:9) und datenschutzfreundlich (youtube-nocookie) eingebettet. Eine Startzeit im Link (&amp;t=90s) wird übernommen.</p>' },
+        ],
+      },
+      initialData: { url: known ? `https://www.youtube.com/watch?v=${known.id}${known.start ? `&t=${known.start}s` : ''}` : '', title: current.title },
+      buttons: [{ type: 'cancel', text: 'Abbrechen' }, { type: 'submit', text: known ? 'Ändern' : 'Einfügen', primary: true }],
+      onSubmit: (api: any) => {
+        const data = api.getData() as { url: string; title: string };
+        const yt = parseYouTube(data.url);
+        if (!yt) {
+          editor.notificationManager.open({ text: 'Das ist kein gültiger YouTube-Link.', type: 'warning', timeout: 3000 });
+          return;
+        }
+        const html = youTubeEmbed(yt.id, yt.start, data.title.trim());
+        if (known && current.box) {
+          editor.undoManager.transact(() => {
+            current.box!.insertAdjacentHTML('afterend', html);
+            editor.dom.remove(current.box!);
+          });
+          editor.nodeChanged();
+        } else {
+          insertBlock(html);
+        }
+        api.close();
+      },
+    } as any);
+  };
+  editor.addCommand('hbYouTube', openYouTubeDialog);
+  editor.ui.registry.addIcon('hb-youtube', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8zM10 15V9l5.2 3z"/></svg>');
+  editor.ui.registry.addButton('hbYouTube', { icon: 'hb-youtube', tooltip: 'YouTube-Video einfügen / ändern', onAction: openYouTubeDialog });
+  editor.ui.registry.addMenuItem('hbYouTube', { icon: 'hb-youtube', text: 'YouTube-Video', onAction: openYouTubeDialog });
+
   editor.ui.registry.addMenuItem('hbMediaImage', { icon: 'image', text: 'Bild aus Medien', onAction: () => { void insertMediaImage(); } });
   editor.ui.registry.addMenuItem('hbMediaFile', { icon: 'document-properties', text: 'Datei aus Medien (Download-Link)', onAction: () => { void insertMediaFile(); } });
   editor.ui.registry.addMenuItem('hbReadmore', { icon: 'horizontal-rule', text: 'Weiterlesen', onAction: insertReadmore });
@@ -200,6 +269,7 @@ export const registerJoomlaButtons = (editor: Editor) => {
       { type: 'menuitem', icon: 'link', text: 'Beitrag / Seite (Link-Dialog)', onAction: () => editor.execCommand('mceLink') },
       { type: 'menuitem', icon: 'image', text: 'Medien: Bild', onAction: () => { void insertMediaImage(); } },
       { type: 'menuitem', icon: 'document-properties', text: 'Medien: Datei (Download-Link)', onAction: () => { void insertMediaFile(); } },
+      { type: 'menuitem', icon: 'hb-youtube', text: 'YouTube-Video', onAction: openYouTubeDialog },
       { type: 'nestedmenuitem', icon: 'link', text: 'Menü', getSubmenuItems: () => linkMenuItems(pages) },
       { type: 'nestedmenuitem', icon: 'save', text: 'Download', getSubmenuItems: () => downloadMenuItems(downloads) },
       { type: 'menuitem', icon: 'page-break', text: 'Seitenumbruch', onAction: () => editor.execCommand('mcePageBreak') },

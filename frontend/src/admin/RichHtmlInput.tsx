@@ -176,7 +176,7 @@ export const RichHtmlInput = ({
               // of TinyMCE's own paste, which can only tell the user to press Ctrl+V.
               menu: {
                 edit: { title: 'Edit', items: 'undo redo | clipboardCut clipboardCopy clipboardPaste pastetext | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps toggleElementHidden | selectall | searchreplace' },
-                insert: { title: 'Insert', items: 'image link media hbMediaImage hbMediaFile codesample inserttable | hbTemplatesMenu | charmap emoticons hr | pagebreak hbReadmore nonbreaking anchor | insertdatetime accordion' },
+                insert: { title: 'Insert', items: 'image link media hbYouTube hbMediaImage hbMediaFile codesample inserttable | hbTemplatesMenu | charmap emoticons hr | pagebreak hbReadmore nonbreaking anchor | insertdatetime accordion' },
               },
               contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps toggleElementHidden | link image table',
               // All tools visible: the "..." drawer is opened on load (below)
@@ -193,7 +193,7 @@ export const RichHtmlInput = ({
                 'bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | lineheight | styles | ' +
                 'clipboardCopy clipboardCut clipboardPaste selectParent duplicateBlock | elementProps toggleElementHidden moveElementUp moveElementDown deleteElement | ' +
                 'blocks fontfamily fontsize | searchreplace | bullist numlist | outdent indent | undo redo | ' +
-                'link unlink anchor image media | code | forecolor backcolor | fullscreen | table accordion | ' +
+                'link unlink anchor image media hbYouTube | code | forecolor backcolor | fullscreen | table accordion | ' +
                 'subscript superscript | charmap emoticons hr | ltr rtl | pastetext | ' +
                 'visualchars visualblocks nonbreaking blockquote hbTemplates pagebreak | customPrint preview codesample insertdatetime removeformat | hbCmsContent',
               quickbars_selection_toolbar: 'bold italic underline | forecolor | quicklink h2 h3 blockquote',

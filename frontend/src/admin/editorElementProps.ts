@@ -40,6 +40,7 @@ export const describeElement = (el: Element): string => {
   if (el.nodeName === 'A') {
     return el.querySelector(BLOCK_CHILD) ? 'Verlinkter Block' : `Button/Link „${short(el.textContent || '')}“`;
   }
+  if (el.hasAttribute('data-hb-video') || el.querySelector?.(':scope > iframe[src*="youtube"]')) return 'YouTube-Video';
   if ((el as HTMLElement).style?.backgroundImage) return 'Hintergrundbild';
   if (el.nodeName === 'DIV' || el.nodeName === 'SECTION' || el.nodeName === 'ARTICLE') {
     return el.querySelector(BLOCK_CHILD) ? 'Bereich' : `Text „${short(el.textContent || '', 24)}“`;

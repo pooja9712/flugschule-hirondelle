@@ -310,7 +310,8 @@ export const Sicherheitstraining = ({ contentId }: { contentId?: string } = {}) 
             />
 
             {/* Impressions Gallery */}
-            <div>
+            {/* data-live-*: the Joomla-style page editor keeps this gallery live (utils/liveBlocks.tsx) */}
+            <div data-live-block="gallery" data-live-slug="sicherheitstraining" data-live-fallback={JSON.stringify(FALLBACK_GALLERY)}>
                <h3 className="font-luxury text-2xl text-[#53a8c7] mb-6 uppercase tracking-wider border-b border-gray-200 pb-4">
                  Impressionen
                </h3>

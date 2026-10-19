@@ -303,6 +303,12 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
   const editLink = () => {
     const el = requirePick('zu verlinken');
     if (!el) return;
+    // A picked video: its link is the YouTube link - open the video dialog.
+    if (el.hasAttribute('data-hb-video') || el.querySelector('iframe')) {
+      editor.selection.select(el);
+      editor.execCommand('hbYouTube');
+      return;
+    }
     const a = linkOf(el);
     if (el.nodeName === 'IMG') editor.selection.select(el);
     else editor.selection.select(a || el, !a);
