@@ -139,6 +139,6 @@ export const LiveHtml = ({ html, className }: { html: string; className?: string
 // Editor canvas styles for the placeholders and FAQ items.
 export const LIVE_BLOCK_EDITOR_CSS =
   '[data-live-block]{display:block;min-height:56px;margin:16px 0;padding:16px;background:#f1f5f9;border:2px dashed #94a3b8;border-radius:4px;color:#475569;font:600 14px "Segoe UI",Arial,sans-serif;}'
-  + '[data-live-block="gallery"]::before{content:"Live-Element: Galerie \\201E" attr(data-live-heading) "\\201C  \\2013  wird unter Admin > Galerie verwaltet";}'
-  + '[data-live-block="comments"]::before{content:"Live-Element: Kommentare & Bewertungen \\2013  erscheint hier automatisch auf der Webseite";}'
+  + '[data-live-block="gallery"]::before{content:"Galerie \\201E" attr(data-live-heading) "\\201C";}'
+  + '[data-live-block="comments"]::before{content:"Kommentare & Bewertungen";}'
   + 'details.faq-item{border-bottom:1px solid #e5e7eb;padding:4px 0;}details.faq-item>summary{font-weight:600;cursor:pointer;padding:8px 0;}';

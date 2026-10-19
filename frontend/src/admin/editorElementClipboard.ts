@@ -62,7 +62,9 @@ export const ELEMENT_CLIPBOARD_CSS =
 export const registerElementClipboard = (editor: Editor, { blockVisibility = false } = {}) => {
   editor.ui.registry.addIcon('hb-arrow-up', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 5l-6 6h4v8h4v-8h4z"/></svg>');
   editor.ui.registry.addIcon('hb-arrow-down', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 19l6-6h-4V5h-4v8H6z"/></svg>');
-  editor.ui.registry.addIcon('hb-palette', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>');
+  // Colourful paint palette (fixed colours, so it reads on the white main
+  // toolbar and on the dark element toolbar alike).
+  editor.ui.registry.addIcon('hb-palette', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 0 0 0 19c1 0 1.7-.75 1.7-1.65 0-.43-.17-.82-.43-1.11-.25-.29-.42-.68-.42-1.09 0-.92.75-1.65 1.65-1.65H16.5A5.5 5.5 0 0 0 22 10.5C22 6.08 17.52 2.5 12 2.5z" fill="#F4E1BC" stroke="#8A6A3B" stroke-width="1.2"/><circle cx="6.8" cy="12" r="1.9" fill="#E53935"/><circle cx="9.2" cy="7.4" r="1.9" fill="#FBC02D"/><circle cx="14.6" cy="7.1" r="1.9" fill="#43A047"/><circle cx="18.1" cy="10.9" r="1.9" fill="#1E88E5"/><circle cx="9.4" cy="16.4" r="1.9" fill="#8E24AA"/></svg>');
   const body = () => editor.getBody();
   let plainTextPaste = false;
   editor.on('PastePlainTextToggle', (e: { state: boolean }) => { plainTextPaste = e.state; });

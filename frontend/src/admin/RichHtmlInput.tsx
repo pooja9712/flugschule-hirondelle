@@ -89,6 +89,15 @@ td a,th a{color:inherit;font-weight:700}
 /* The few text utilities the content relies on (site CSS isn't loaded here). */
 .text-right{text-align:right}.text-center{text-align:center}.text-left{text-align:left}
 .font-bold,.font-semibold{font-weight:700}.italic{font-style:italic}.uppercase{text-transform:uppercase}
+/* Row layouts (e.g. the sidebar price list: name left, price right, divider
+   below) - so such rows stay on one line like on the site. */
+.flex{display:flex}.inline-flex{display:inline-flex}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}
+.justify-between{justify-content:space-between}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}
+.items-start{align-items:flex-start}.items-center{align-items:center}.items-end{align-items:flex-end}
+.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-6{gap:1.5rem}.whitespace-nowrap{white-space:nowrap}
+.border-b{border-bottom:1px solid #e5e7eb;padding-bottom:.5rem;margin-bottom:.75rem}
+.border-t{border-top:1px solid #e5e7eb;padding-top:.5rem}
+.border{border:1px solid #e5e7eb}
 /* Videos / maps: 16:9, full width up to 720px (the responsive YouTube box sizes itself). */
 .mce-preview-object{display:block!important;max-width:720px;margin:8px 0}
 iframe{max-width:100%}
@@ -166,7 +175,7 @@ export const RichHtmlInput = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
-          helperText={helperText || 'Rohes HTML/CSS - z.B. <p style="color:#c00; font-size:18px" class="meine-klasse">Text</p>'}
+          helperText={helperText}
         />
       ) : (
         <Box sx={{ border: '1px solid #c4c4c4', borderRadius: 1, overflow: 'hidden', '& .tox-tinymce': { border: 'none', borderRadius: 0 } }}>
@@ -194,6 +203,8 @@ export const RichHtmlInput = ({
               // and pushes the content down instead of covering it.
               toolbar_mode: 'sliding',
               toolbar_sticky: true,
+              // Stick below the admin's fixed top bar (64px), not underneath it.
+              toolbar_sticky_offset: 64,
               plugins: [
                 'accordion', 'advlist', 'anchor', 'autolink', 'charmap', 'code', 'codesample',
                 'directionality', 'emoticons', 'fullscreen', 'help', 'image', 'insertdatetime',
@@ -271,8 +282,13 @@ export const RichHtmlInput = ({
                 registerElementClipboard(editor, { blockVisibility });
                 // Joomla's "CMS-Inhalt" and "Vorlagen" buttons.
                 registerJoomlaButtons(editor);
+                // Open the "..." drawer by default - checked on the drawer itself
+                // once the UI is rendered (the command state isn't reliable at init).
                 editor.on('init', () => {
-                  if (!editor.queryCommandState('ToggleToolbarDrawer')) editor.execCommand('ToggleToolbarDrawer');
+                  setTimeout(() => {
+                    const drawer = editor.getContainer()?.querySelector('.tox-toolbar__overflow');
+                    if (!drawer || drawer.classList.contains('tox-toolbar__overflow--closed')) editor.execCommand('ToggleToolbarDrawer');
+                  }, 0);
                 });
                 if (plain) registerEmptyDecorationMarker(editor);
 

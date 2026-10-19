@@ -314,15 +314,11 @@ export const HomeContentEditor = () => {
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 2 }}>Seiteninhalt</Typography>
-            <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-              Alles auf dieser Seite (Kacheln, Hoch-Hinaus-Text, Team) wird hier als ein einziger, frei gestaltbarer Inhalt bearbeitet - wie ein Artikel in Joomla. Bilder über das Bild-Symbol einfügen.
-            </Typography>
             <RichHtmlInput
               label=""
               value={content.bodyHtml}
               onChange={(html) => setContent({ ...content, bodyHtml: html })}
               minRows={18}
-              helperText="Wie in Joomla: Menüleiste oben, weitere Werkzeuge über die Schaltfläche „…“. Über „HTML“ lässt sich der Quelltext direkt bearbeiten."
               bodyClass="home-body-content"
               contentMaxWidth={1200}
               contentOnly={joomlaTrial}

@@ -1188,7 +1188,7 @@ export const PagesManager = () => {
               <OpenInNewIcon fontSize="small" />
             </IconButton>
             {/* PAGE ARTICLE MODE - Bearbeiten opens the Joomla-style page editor; the older field editor stays reachable */}
-            <IconButton size="small" onClick={() => openArticleEditor(page.kind, previewPath, title, page.editPath)} title="Bearbeiten (Joomla-Editor)">
+            <IconButton size="small" onClick={() => openArticleEditor(page.kind, previewPath, title, page.editPath)} title="Bearbeiten">
               <EditIcon fontSize="small" />
             </IconButton>
             <IconButton size="small" onClick={() => navigate(page.editPath)} title="Felder-Editor (alt)">
@@ -1235,7 +1235,7 @@ export const PagesManager = () => {
             >
               <OpenInNewIcon fontSize="small" />
             </IconButton>
-            <IconButton size="small" onClick={openEdit} title="Bearbeiten (Joomla-Editor)">
+            <IconButton size="small" onClick={openEdit} title="Bearbeiten">
               <EditIcon fontSize="small" />
             </IconButton>
             {/* PAGE ARTICLE MODE - the older field editor stays reachable */}
@@ -1285,7 +1285,7 @@ export const PagesManager = () => {
           >
             <OpenInNewIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" onClick={openCustom} title="Bearbeiten (Joomla-Editor)">
+          <IconButton size="small" onClick={openCustom} title="Bearbeiten">
             <EditIcon fontSize="small" />
           </IconButton>
           {/* PAGE ARTICLE MODE - the Unlayer page builder stays reachable */}

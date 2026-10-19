@@ -20,7 +20,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useNotify } from 'react-admin';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, FormControlLabel, Switch, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, CircularProgress, FormControlLabel, Switch, Typography } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RestoreIcon from '@mui/icons-material/Restore';
 import ListAltIcon from '@mui/icons-material/ListAlt';
@@ -97,7 +97,8 @@ export const PageArticleEditor = () => {
         setHtml(imported);
         setFullWidth(true);
         setEditorKey((k) => k + 1);
-        notify('Inhalt der Seite übernommen - jetzt bearbeiten und speichern.', { type: 'info' });
+        // Only confirm a re-import the user asked for, not the automatic one.
+        if (confirmFirst) notify('Inhalt der Seite übernommen - jetzt bearbeiten und speichern.', { type: 'info' });
       })
       .catch((err) => notify(err.message, { type: 'error' }))
       .finally(() => setImporting(false));
@@ -211,13 +212,6 @@ export const PageArticleEditor = () => {
         </CardContent>
       </Card>
 
-      {!exists && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          {importing ? 'Der aktuelle Inhalt der Seite wird geladen…' : 'Der aktuelle Inhalt der Seite wurde übernommen.'} Auf der Webseite ändert sich erst etwas,
-          wenn Sie <strong>Speichern</strong>. Kopf-/Fußmenü und Banner-Slider bleiben unverändert.
-        </Alert>
-      )}
-
       <Card>
         <CardContent>
           {importing && !html ? (
@@ -233,7 +227,6 @@ export const PageArticleEditor = () => {
               contentMaxWidth={fullWidth ? undefined : 1200}
               contentOnly
               blockVisibility
-              helperText="Wie in Joomla: Element anklicken für Link, Farben, Sichtbarkeit; „Design-Vorschau“ zeigt die Seite mit ihrem Design. Formulare und interaktive Elemente der Originalseite werden beim Übernehmen zu statischem Inhalt."
             />
           )}
         </CardContent>

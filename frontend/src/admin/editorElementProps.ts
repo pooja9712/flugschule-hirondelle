@@ -162,11 +162,10 @@ export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: 
 
   // Joomla's module Status + "Veröffentlichung starten/beenden", per element.
   const visibilityItems: any[] = [
-    { type: 'htmlpanel', html: '<p style="margin:0 0 8px;color:#555">Wie ein Modul in Joomla: ausblenden statt löschen, oder nur in einem Zeitraum anzeigen. Ausgeblendete Elemente bleiben im Editor (blass, rot umrandet) und können jederzeit wieder eingeblendet werden.</p>' },
     { type: 'selectbox', name: 'status', label: 'Status', items: [{ value: 'published', text: 'Veröffentlicht (sichtbar)' }, { value: 'hidden', text: 'Versteckt (nicht auf der Webseite)' }] },
     { type: 'grid', columns: 2, items: [
-      { type: 'input', name: 'from', label: 'Anzeigen ab (JJJJ-MM-TT, leer = sofort)', placeholder: '2027-01-15' },
-      { type: 'input', name: 'until', label: 'Anzeigen bis (JJJJ-MM-TT, leer = unbegrenzt)', placeholder: '2027-02-28' },
+      { type: 'input', name: 'from', label: 'Anzeigen ab', placeholder: 'JJJJ-MM-TT' },
+      { type: 'input', name: 'until', label: 'Anzeigen bis', placeholder: 'JJJJ-MM-TT' },
     ] },
   ];
 

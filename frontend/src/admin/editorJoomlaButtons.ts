@@ -211,9 +211,8 @@ export const registerJoomlaButtons = (editor: Editor) => {
       body: {
         type: 'panel',
         items: [
-          { type: 'input', name: 'url', label: 'YouTube-Link (z.B. https://www.youtube.com/watch?v=… oder https://youtu.be/…)' },
-          { type: 'input', name: 'title', label: 'Titel (für Barrierefreiheit, optional)' },
-          { type: 'htmlpanel', html: '<p style="margin:4px 0 0;color:#666">Das Video wird in voller Breite (16:9) und datenschutzfreundlich (youtube-nocookie) eingebettet. Eine Startzeit im Link (&amp;t=90s) wird übernommen.</p>' },
+          { type: 'input', name: 'url', label: 'YouTube-Link', placeholder: 'https://www.youtube.com/watch?v=…' },
+          { type: 'input', name: 'title', label: 'Titel' },
         ],
       },
       initialData: { url: known ? `https://www.youtube.com/watch?v=${known.id}${known.start ? `&t=${known.start}s` : ''}` : '', title: current.title },
