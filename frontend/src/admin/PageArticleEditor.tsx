@@ -120,6 +120,7 @@ export const PageArticleEditor = () => {
   const pagePath = searchParams.get('path') || `/${key}`;
   // The page's previous field-based editor, still reachable.
   const fieldsPath = searchParams.get('fields');
+  const isNewPage = searchParams.get('new') === '1';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -158,7 +159,8 @@ export const PageArticleEditor = () => {
         setHtml(data.html || '');
         // No editor content yet: start from the page as it is now, and
         // publish it with the first "Speichern" - like editing in Joomla.
-        if (!data.exists || !data.html) importPage(false);
+        // A brand-new page ("Neue Seite", ?new=1) starts empty instead.
+        if ((!data.exists || !data.html) && !isNewPage) importPage(false);
       })
       .then(() => loadSettings(key).then(setSettings).catch(() => setSettings(null)))
       .catch(() => notify('Fehler beim Laden', { type: 'error' }))

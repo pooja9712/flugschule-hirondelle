@@ -481,6 +481,47 @@ export const PagesManager = () => {
   useEffect(fetchFixedSettings, []);
   useEffect(fetchMenuItems, []);
 
+  // "Neue Seite": ask for title + URL, create the page and open it in the
+  // same Joomla-style page editor as every other page (PageArticleEditor),
+  // starting with empty content. The old Unlayer builder is reachable from
+  // nowhere - created pages have only the new editor.
+  const [newPageOpen, setNewPageOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [newSlugTouched, setNewSlugTouched] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const toSlug = (value: string) => value.trim().toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  const openNewPage = () => {
+    setNewTitle('');
+    setNewSlug('');
+    setNewSlugTouched(false);
+    setNewPageOpen(true);
+  };
+
+  const createNewPage = async () => {
+    const slugValue = toSlug(newSlug || newTitle);
+    if (!newTitle.trim() || !slugValue) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ title: newTitle.trim(), slug: slugValue, status: 'published', showInNav: true, body: '' }),
+      });
+      const created = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(created.error || 'Seite konnte nicht erstellt werden');
+      setNewPageOpen(false);
+      navigate(`/admin/page-article/${encodeURIComponent(created.slug)}?path=${encodeURIComponent(`/${created.slug}`)}&title=${encodeURIComponent(created.title)}&new=1`);
+    } catch (err: any) {
+      notify(err.message || 'Seite konnte nicht erstellt werden', { type: 'error' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const openCreate = () => {
     setEditing(null);
     setTitle('');
@@ -890,6 +931,8 @@ export const PagesManager = () => {
 
   const handleResetFixedPage = async (page: (typeof FIXED_PAGES)[number]) => {
     try {
+      // The page-editor content is reset too (it goes to the Papierkorb).
+      await fetch(`/api/page-articles/${encodeURIComponent(page.kind)}`, { method: 'DELETE', headers: authHeaders() });
       const contentRes = await fetch(page.deletePath, { method: 'DELETE', headers: authHeaders() });
       const data = await contentRes.json().catch(() => ({}));
       if (!contentRes.ok) {
@@ -1261,7 +1304,8 @@ export const PagesManager = () => {
     // "home" slug would clash with the Startseite's own key - Unlayer only).
     const openCustom = () => {
       if (page.slug === 'home') openEdit(page);
-      else openArticleEditor(page.slug, `/${page.slug}`, page.title, `/admin/pages?editPage=${encodeURIComponent(page.id)}`);
+      // Created pages have only the new editor - no old field/Unlayer editor.
+      else openArticleEditor(page.slug, `/${page.slug}`, page.title);
     };
     return (
       <TableRow key={row.key} hover onClick={openCustom} sx={{ cursor: 'pointer' }}>
@@ -1290,12 +1334,6 @@ export const PagesManager = () => {
           <IconButton size="small" onClick={openCustom} title="Bearbeiten">
             <EditIcon fontSize="small" />
           </IconButton>
-          {/* PAGE ARTICLE MODE - the Unlayer page builder stays reachable */}
-          {page.slug !== 'home' && (
-            <IconButton size="small" onClick={() => openEdit(page)} title="Unlayer-Editor (alt)">
-              <ArticleIcon fontSize="small" />
-            </IconButton>
-          )}
           <IconButton size="small" onClick={() => handleDuplicate(page)} title="Duplizieren (erstellt eine Kopie mit gleichem Design/Inhalt)">
             <ContentCopyIcon fontSize="small" />
           </IconButton>
@@ -1341,9 +1379,37 @@ export const PagesManager = () => {
         <Typography variant="h5">Seiten</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button variant="outlined" startIcon={<RestoreFromTrashIcon />} onClick={() => navigate('/admin/trash')}>Papierkorb</Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Neue Seite</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openNewPage}>Neue Seite</Button>
         </Box>
       </Box>
+      <Dialog open={newPageOpen} onClose={() => !creating && setNewPageOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Neue Seite</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            label="Titel"
+            fullWidth
+            value={newTitle}
+            onChange={(e) => { setNewTitle(e.target.value); if (!newSlugTouched) setNewSlug(toSlug(e.target.value)); }}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            label="URL"
+            fullWidth
+            value={newSlug}
+            onChange={(e) => { setNewSlug(e.target.value); setNewSlugTouched(true); }}
+            onBlur={(e) => setNewSlug(toSlug(e.target.value))}
+            helperText={`Die Seite ist dann unter /${toSlug(newSlug || newTitle) || '...'} erreichbar`}
+            onKeyDown={(e) => { if (e.key === 'Enter') void createNewPage(); }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewPageOpen(false)} disabled={creating}>Abbrechen</Button>
+          <Button variant="contained" onClick={() => { void createNewPage(); }} disabled={creating || !newTitle.trim() || !toSlug(newSlug || newTitle)}>
+            Erstellen &amp; bearbeiten
+          </Button>
+        </DialogActions>
+      </Dialog>
       {sessionExpired && (
         <Alert
           severity="warning"

@@ -115,6 +115,12 @@ router.delete('/:key', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
     const key = parseKey(req.params.key);
     if (!key) return res.status(400).json({ error: 'Ungültige Seite' });
+    // Into the Papierkorb first (restored like any SitePageContent row,
+    // trash.routes.ts), so removing it can be undone.
+    const row = await prisma.sitePageContent.findUnique({ where: { id: rowId(key) } });
+    if (row) {
+      await prisma.contentTrash.create({ data: { kind: 'sitepagecontent', refId: rowId(key), title: `Seiteninhalt (Editor): ${key}`, data: { data: row.data as any } } });
+    }
     await prisma.sitePageContent.deleteMany({ where: { id: rowId(key) } });
     res.json({ ok: true });
   } catch (error) {

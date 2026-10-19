@@ -37,7 +37,12 @@ router.post('/:id/restore', authenticateJWT, authorizeAdmin, async (req, res) =>
       if (existingSlug) {
         return res.status(400).json({ error: `Die URL "${data.slug}" wird bereits von einer anderen Seite verwendet. Bitte diese zuerst umbenennen.` });
       }
-      await prisma.page.create({ data: { ...data, id: item.refId } });
+      const { articleData, ...pageData } = data;
+      await prisma.page.create({ data: { ...pageData, id: item.refId } });
+      if (articleData) {
+        const articleId = `article--${pageData.slug}`;
+        await prisma.sitePageContent.upsert({ where: { id: articleId }, update: { data: articleData }, create: { id: articleId, data: articleData } });
+      }
     } else if (item.kind === 'homecontent') {
       await prisma.homeContent.upsert({ where: { id: item.refId }, update: data, create: { ...data, id: item.refId } });
     } else if (item.kind === 'sitepagecontent') {
