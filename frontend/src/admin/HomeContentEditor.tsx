@@ -4,6 +4,7 @@ import { useNotify } from 'react-admin';
 import { type FixedDuplicateMeta, FixedDuplicateMetaFields } from './FixedDuplicateMetaFields';
 import { type PrimaryPageSettings, PrimaryPageSettingsFields } from './PrimaryPageSettingsFields';
 import { RichHtmlInput } from './RichHtmlInput';
+import { JoomlaPageActions } from './JoomlaPageActions';
 import {
   Box,
   Card,
@@ -152,6 +153,10 @@ export const HomeContentEditor = () => {
   // editing one of those instead of the real Startseite.
   const { contentId } = useParams<{ contentId?: string }>();
   const previewPath = contentId ? `/${contentId}` : '/';
+  // Joomla-style page editing (content-only canvas, Joomla action bar with
+  // Versionen) - on trial for /home-3 first, to be rolled out to the other
+  // pages once approved.
+  const joomlaTrial = contentId === 'home-3';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [content, setContent] = useState<HomeContentData>(DEFAULTS);
@@ -186,10 +191,13 @@ export const HomeContentEditor = () => {
 
   useEffect(load, [contentId]);
 
-  const handleSave = () => {
+  // Resolves to the page's slug after a successful save (it can change when
+  // the URL field was edited), or null when saving failed.
+  const handleSave = (): Promise<string | null> => {
     setSaving(true);
+    let savedSlug: string | null = contentId || 'home';
     const url = contentId ? `/api/sitepagecontent/${contentId}` : '/api/homecontent/default';
-    fetch(url, {
+    return fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(contentId ? { data: content } : content),
@@ -207,6 +215,7 @@ export const HomeContentEditor = () => {
           });
           const updated = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(updated.error || 'Seiten-Einstellungen konnten nicht gespeichert werden');
+          savedSlug = updated.slug;
           if (updated.slug !== contentId) navigate(`/admin/home-content/${updated.slug}`, { replace: true });
           else setDupMeta(updated);
         }
@@ -221,8 +230,14 @@ export const HomeContentEditor = () => {
           setPrimaryMeta(updated);
         }
       })
-      .then(() => notify('Startseiten-Inhalte gespeichert', { type: 'success' }))
-      .catch((err) => notify(err.message || 'Fehler beim Speichern', { type: 'error' }))
+      .then(() => {
+        notify('Startseiten-Inhalte gespeichert', { type: 'success' });
+        return savedSlug;
+      })
+      .catch((err) => {
+        notify(err.message || 'Fehler beim Speichern', { type: 'error' });
+        return null;
+      })
       .finally(() => setSaving(false));
   };
 
@@ -262,8 +277,18 @@ export const HomeContentEditor = () => {
 
   return (
     <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5">Startseite - Inhalte</Typography>
+        {joomlaTrial ? (
+          <JoomlaPageActions
+            slug={contentId!}
+            previewPath={previewPath}
+            saving={saving}
+            onSave={handleSave}
+            onRestore={(bodyHtml) => setContent((prev) => ({ ...prev, bodyHtml }))}
+            editPathFor={(slug) => `/admin/home-content/${slug}`}
+          />
+        ) : (
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button component="a" href={previewPath} target="_blank" rel="noopener noreferrer" variant="outlined" startIcon={<OpenInNewIcon />}>
             Vorschau
@@ -272,6 +297,7 @@ export const HomeContentEditor = () => {
             Speichern
           </Button>
         </Box>
+        )}
       </Box>
 
       {dupMeta && <FixedDuplicateMetaFields meta={dupMeta} onChange={setDupMeta} />}
@@ -296,6 +322,8 @@ export const HomeContentEditor = () => {
               helperText="Wie in Joomla: Menüleiste oben, weitere Werkzeuge über die Schaltfläche „…“. Über „HTML“ lässt sich der Quelltext direkt bearbeiten."
               bodyClass="home-body-content"
               contentMaxWidth={1200}
+              contentOnly={joomlaTrial}
+              blockVisibility={joomlaTrial}
             />
           </CardContent>
         </Card>

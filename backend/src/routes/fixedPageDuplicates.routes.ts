@@ -362,6 +362,8 @@ router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
       const content = await prisma.sitePageContent.findUnique({ where: { id: existing.slug } });
       await prisma.sitePageContent.create({ data: { id: newSlug, data: content?.data ?? {} } });
       await prisma.sitePageContent.delete({ where: { id: existing.slug } });
+      // Its content history ("Versionen", sitePageContent.routes.ts) moves along.
+      await prisma.sitePageContent.updateMany({ where: { id: `versions--${existing.slug}` }, data: { id: `versions--${newSlug}` } });
     }
 
     const updated = await prisma.fixedPageDuplicate.update({

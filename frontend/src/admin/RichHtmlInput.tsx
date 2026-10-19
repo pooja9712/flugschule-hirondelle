@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Editor } from '@tinymce/tinymce-react';
-import { Box, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import type { Editor as TinyEditor } from 'tinymce';
+import { Box, FormControlLabel, Switch, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import CodeIcon from '@mui/icons-material/Code';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { ELEMENT_CLIPBOARD_CSS, registerElementClipboard } from './editorElementClipboard';
@@ -49,7 +50,58 @@ interface RichHtmlInputProps {
   bodyClass?: string;
   // Width of the public page's content column, mirrored in the editor.
   contentMaxWidth?: number;
+  // Joomla-style "content only" canvas: the editor shows the plain content
+  // (headings, texts, links, images, tables) with block outlines instead of
+  // the public page's design - the frontend CSS styles it on the site.
+  // A "Design-Vorschau" switch still shows the designed view on demand.
+  contentOnly?: boolean;
+  // Joomla-style show/hide + publish dates per element (blockVisibility.ts).
+  blockVisibility?: boolean;
 }
+
+// Canvas styles for contentOnly mode: readable plain content, no site CSS.
+const CONTENT_ONLY_CSS = `
+body{font-family:"Segoe UI",Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;background:#fff;margin:0;padding:16px 20px;}
+h1,h2,h3,h4,h5,h6{font-weight:700;line-height:1.3;margin:.6em 0 .3em;}
+h1{font-size:26px}h2{font-size:22px}h3{font-size:19px}h4{font-size:17px}h5,h6{font-size:15px}
+p{margin:0 0 .6em}
+a{color:#1a73e8;text-decoration:underline}
+ul,ol{padding-left:1.6em;margin:0 0 .6em}
+img{max-width:220px;max-height:160px;height:auto;display:block;margin:4px 0;border:1px solid #ddd}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:6px}
+/* Elements that only hold a background image: show the image as a thumbnail. */
+[style*="background-image"]{display:block!important;min-height:90px;max-width:220px;background-size:cover!important;background-position:center!important;border:1px solid #ddd;margin:4px 0}
+/* Empty decoration boxes (overlays, frames) have nothing to edit - hidden
+   (marked by markEmptyDecoration below). */
+[data-hb-empty]{display:none!important}
+/* A link wrapping a whole card: show it as a link block with its target,
+   not as blue underlined text. */
+a:has(div,img,h1,h2,h3,h4,p){display:block;color:inherit;text-decoration:none;border-left:3px solid #1a73e8;padding-left:8px;margin:6px 0}
+a:has(div,img,h1,h2,h3,h4,p)::before{content:"Link: " attr(href);display:block;font:600 11px "Segoe UI",Arial,sans-serif;color:#1a73e8}
+`;
+
+const EMPTY_ATTR = 'data-hb-empty';
+
+// Marks boxes with nothing to edit (no text, image, table... - the cards'
+// gradient overlays and frames) so the content-only canvas can hide them.
+// Runs only when content is loaded, never while typing, so a block the user
+// is emptying doesn't vanish under the cursor. The marker never reaches the
+// saved HTML (PreProcess).
+const registerEmptyDecorationMarker = (editor: TinyEditor) => {
+  const mark = () => {
+    editor.getBody().querySelectorAll<HTMLElement>('div').forEach((d) => {
+      const empty = !(d.textContent || '').trim()
+        && !d.querySelector('img,iframe,video,audio,table,hr,input,svg,[style*="background-image"]')
+        && !d.style.backgroundImage;
+      if (empty) d.setAttribute(EMPTY_ATTR, '1');
+      else d.removeAttribute(EMPTY_ATTR);
+    });
+  };
+  editor.on('SetContent', mark);
+  editor.on('PreProcess', (e: { node: Element }) => {
+    e.node.querySelectorAll(`[${EMPTY_ATTR}]`).forEach((n) => n.removeAttribute(EMPTY_ATTR));
+  });
+};
 
 export const RichHtmlInput = ({
   label,
@@ -60,14 +112,25 @@ export const RichHtmlInput = ({
   defaultHtmlMode = false,
   bodyClass = '',
   contentMaxWidth,
+  contentOnly = false,
+  blockVisibility = false,
 }: RichHtmlInputProps) => {
   const [htmlMode, setHtmlMode] = useState(defaultHtmlMode);
+  const [designPreview, setDesignPreview] = useState(false);
   const siteStyles = useMemo(collectSiteStyles, []);
+  const plain = contentOnly && !designPreview;
 
   return (
     <Box sx={{ mb: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
         <Typography variant="subtitle2" sx={{ color: '#666' }}>{label}</Typography>
+        <Box sx={{ flexGrow: 1 }} />
+        {contentOnly && !htmlMode && (
+          <FormControlLabel
+            control={<Switch size="small" checked={designPreview} onChange={(e) => setDesignPreview(e.target.checked)} />}
+            label={<Typography variant="body2">Design-Vorschau</Typography>}
+          />
+        )}
         <ToggleButtonGroup size="small" exclusive value={htmlMode ? 'html' : 'visual'} onChange={(_, v) => v && setHtmlMode(v === 'html')}>
           <ToggleButton value="visual" sx={{ gap: 0.5, textTransform: 'none' }}><VisibilityIcon fontSize="small" />Editor</ToggleButton>
           <ToggleButton value="html" sx={{ gap: 0.5, textTransform: 'none' }}><CodeIcon fontSize="small" />HTML</ToggleButton>
@@ -87,6 +150,8 @@ export const RichHtmlInput = ({
       ) : (
         <Box sx={{ border: '1px solid #c4c4c4', borderRadius: 1, overflow: 'hidden', '& .tox-tinymce': { border: 'none', borderRadius: 0 } }}>
           <Editor
+            // Content-only <-> design view needs a fresh editor (canvas CSS is set at init).
+            key={plain ? 'plain' : 'design'}
             licenseKey="gpl"
             tinymceScriptSrc="/tinymce/tinymce.min.js"
             value={value}
@@ -100,11 +165,13 @@ export const RichHtmlInput = ({
               // Edit menu / right-click menu use the element clipboard instead
               // of TinyMCE's own paste, which can only tell the user to press Ctrl+V.
               menu: {
-                edit: { title: 'Edit', items: 'undo redo | clipboardCut clipboardCopy clipboardPaste pastetext | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps | selectall | searchreplace' },
+                edit: { title: 'Edit', items: 'undo redo | clipboardCut clipboardCopy clipboardPaste pastetext | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps toggleElementHidden | selectall | searchreplace' },
                 insert: { title: 'Insert', items: 'image link media hbMediaImage hbMediaFile codesample inserttable | hbTemplatesMenu | charmap emoticons hr | pagebreak hbReadmore nonbreaking anchor | insertdatetime accordion' },
               },
-              contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps | link image table',
-              toolbar_mode: 'sliding',
+              contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps toggleElementHidden | link image table',
+              // Overflow tools open as a popup behind "..." that starts closed
+              // and closes again on its own, instead of a drawer left open.
+              toolbar_mode: 'floating',
               toolbar_sticky: true,
               plugins: [
                 'accordion', 'advlist', 'anchor', 'autolink', 'charmap', 'code', 'codesample',
@@ -114,7 +181,7 @@ export const RichHtmlInput = ({
               ],
               toolbar:
                 'bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | lineheight | styles | ' +
-                'clipboardCopy clipboardCut clipboardPaste selectParent duplicateBlock | elementProps moveElementUp moveElementDown deleteElement | ' +
+                'clipboardCopy clipboardCut clipboardPaste selectParent duplicateBlock | elementProps toggleElementHidden moveElementUp moveElementDown deleteElement | ' +
                 'blocks fontfamily fontsize | searchreplace | bullist numlist | outdent indent | undo redo | ' +
                 'link unlink anchor image media | code | forecolor backcolor | fullscreen | table accordion | ' +
                 'subscript superscript | charmap emoticons hr | ltr rtl | pastetext | ' +
@@ -157,18 +224,23 @@ export const RichHtmlInput = ({
               convert_urls: false,
               relative_urls: false,
               remove_script_host: false,
-              content_css: siteStyles.links,
-              body_class: bodyClass,
-              content_style:
-                siteStyles.inline +
-                `\nbody{margin:0 auto;padding:24px;background:#fff;${contentMaxWidth ? `max-width:${contentMaxWidth}px;` : ''}}\n` +
-                ELEMENT_CLIPBOARD_CSS,
+              content_css: plain ? 'default' : siteStyles.links,
+              body_class: plain ? '' : bodyClass,
+              // Block outlines with tag names, so the structure stays visible
+              // without the page design.
+              visualblocks_default_state: plain,
+              content_style: plain
+                ? CONTENT_ONLY_CSS + ELEMENT_CLIPBOARD_CSS
+                : siteStyles.inline +
+                  `\nbody{margin:0 auto;padding:24px;background:#fff;${contentMaxWidth ? `max-width:${contentMaxWidth}px;` : ''}}\n` +
+                  ELEMENT_CLIPBOARD_CSS,
               setup: (editor) => {
                 // Copy/cut/paste whole elements (boxes, images, text), plus
                 // "select parent" and "duplicate" - see editorElementClipboard.ts.
-                registerElementClipboard(editor);
+                registerElementClipboard(editor, { blockVisibility });
                 // Joomla's "CMS-Inhalt" and "Vorlagen" buttons.
                 registerJoomlaButtons(editor);
+                if (plain) registerEmptyDecorationMarker(editor);
 
                 // The open-source TinyMCE build has no print button.
                 editor.ui.registry.addButton('customPrint', {

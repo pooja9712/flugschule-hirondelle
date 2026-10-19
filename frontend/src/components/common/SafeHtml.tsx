@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import type { MouseEvent } from 'react';
 import { useLightbox } from './Lightbox';
+import { removeUnpublishedBlocks } from '../../utils/blockVisibility';
 
 // Renders CMS-authored rich text (event/location/organizer descriptions,
 // legal pages) safely. These fields are stored as raw HTML and were
@@ -63,6 +64,8 @@ export const SafeHtml = ({ html, className }: { html: string; className?: string
   const withFixedLinks = (() => {
     const container = document.createElement('div');
     container.innerHTML = clean;
+    // Blocks switched off or scheduled in the page editor (see blockVisibility.ts).
+    removeUnpublishedBlocks(container);
     container.querySelectorAll('a[href]').forEach((a) => {
       const href = a.getAttribute('href') || '';
       const articleMatch = /^index\.php\?.*\bid=(\d+)/i.exec(href);

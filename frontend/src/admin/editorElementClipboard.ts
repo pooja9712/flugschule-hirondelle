@@ -1,5 +1,6 @@
 import type { Editor } from 'tinymce';
 import { describeElement, openElementPropsDialog } from './editorElementProps';
+import { FROM_ATTR, HIDDEN_ATTR, UNTIL_ATTR, isBlockLive } from '../utils/blockVisibility';
 
 // Element-level editing for the TinyMCE editor (RichHtmlInput.tsx),
 // Joomla/page-builder style:
@@ -45,15 +46,20 @@ interface ClipEntry {
 let clip: ClipEntry | null = null;
 
 export const ELEMENT_CLIPBOARD_CSS =
+  // Hidden / scheduled blocks (blockVisibility.ts) stay editable but stand out.
+  `[${HIDDEN_ATTR}]{opacity:.45;outline:2px dashed #d32f2f !important;outline-offset:-2px;}` +
+  `[${FROM_ATTR}]:not([${HIDDEN_ATTR}]),[${UNTIL_ATTR}]:not([${HIDDEN_ATTR}]){outline:2px dashed #e67e22 !important;outline-offset:-2px;}` +
   `[${ACTIVE_ATTR}]{outline:2px dashed #53a8c7 !important;outline-offset:2px;}` +
   `#${TOOLBAR_ID}{all:initial;position:absolute;z-index:2147483000;display:none;align-items:center;gap:1px;background:#1A1F24;border-radius:4px;padding:2px;box-shadow:0 2px 8px rgba(0,0,0,.35);font:12px/1 sans-serif;}` +
-  `#${TOOLBAR_ID} span{all:initial;color:#fff;font:600 11px/1 sans-serif;padding:0 8px 0 6px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;}` +
+  `#${TOOLBAR_ID} span{all:initial;color:#fff;font:600 11px/1 sans-serif;padding:0 8px 0 6px;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;}` +
   `#${TOOLBAR_ID} button{all:initial;cursor:pointer;width:26px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;color:#fff;fill:#fff;}` +
   `#${TOOLBAR_ID} button:hover{background:#53a8c7;}` +
   `#${TOOLBAR_ID} button.hb-danger:hover{background:#d32f2f;}` +
   `#${TOOLBAR_ID} svg{width:18px;height:18px;fill:#fff;}`;
 
-export const registerElementClipboard = (editor: Editor) => {
+// `blockVisibility`: offer Joomla-style show/hide + scheduling per element
+// (only where the public page applies it, see blockVisibility.ts).
+export const registerElementClipboard = (editor: Editor, { blockVisibility = false } = {}) => {
   editor.ui.registry.addIcon('hb-arrow-up', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 5l-6 6h4v8h4v-8h4z"/></svg>');
   editor.ui.registry.addIcon('hb-arrow-down', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 19l6-6h-4V5h-4v8H6z"/></svg>');
   editor.ui.registry.addIcon('hb-palette', '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>');
@@ -282,9 +288,19 @@ export const registerElementClipboard = (editor: Editor) => {
     notify(`${describeElement(el)} gelöscht - Rückgängig mit Strg+Z`);
   };
 
+  // Joomla's publish/unpublish toggle, for one element.
+  const toggleHidden = () => {
+    const el = requirePick('ein- oder auszublenden');
+    if (!el) return;
+    const hide = !el.hasAttribute(HIDDEN_ATTR);
+    editor.undoManager.transact(() => editor.dom.setAttrib(el, HIDDEN_ATTR, hide ? '1' : null));
+    changed();
+    notify(hide ? `${describeElement(el)} ausgeblendet - erscheint nicht mehr auf der Webseite` : `${describeElement(el)} wieder sichtbar`);
+  };
+
   const editProps = () => {
     const el = requirePick('bearbeiten');
-    if (el) openElementPropsDialog(editor, el, changed);
+    if (el) openElementPropsDialog(editor, el, changed, { blockVisibility });
   };
 
   // ---------- outline + floating toolbar ----------
@@ -320,7 +336,8 @@ export const registerElementClipboard = (editor: Editor) => {
       ['duplicate', '2', 'Duplizieren', duplicate],
       ['hb-arrow-up', '↑', 'Nach oben verschieben', () => move(-1)],
       ['hb-arrow-down', '↓', 'Nach unten verschieben', () => move(1)],
-      ['hb-palette', '🎨', 'Farben & Eigenschaften', editProps],
+      ...(blockVisibility ? [['preview', '👁', 'Ein-/Ausblenden (veröffentlicht / versteckt)', toggleHidden] as [string, string, string, () => void]] : []),
+      ['hb-palette', '🎨', 'Farben, Eigenschaften & Sichtbarkeit', editProps],
       ['remove', '🗑', 'Element löschen', remove, 'hb-danger'],
     ];
     buttons.forEach(([iconName, fallback, title, action, cls]) => {
@@ -359,7 +376,9 @@ export const registerElementClipboard = (editor: Editor) => {
     outlined = el;
 
     if (!el) { toolbar.style.display = 'none'; return; }
-    label!.textContent = describeElement(el);
+    const state = el.hasAttribute(HIDDEN_ATTR) ? ' (versteckt)'
+      : el.hasAttribute(FROM_ATTR) || el.hasAttribute(UNTIL_ATTR) ? (isBlockLive(el) ? ' (zeitgesteuert)' : ' (zeitgesteuert, gerade nicht sichtbar)') : '';
+    label!.textContent = describeElement(el) + state;
     label!.title = describeElement(el);
     toolbar.style.display = 'flex';
     const rect = el.getBoundingClientRect();
@@ -418,7 +437,8 @@ export const registerElementClipboard = (editor: Editor) => {
     ['clipboardPaste', 'paste', 'Einfügen', () => { void paste(); }],
     ['selectParent', 'chevron-up', 'Übergeordnetes Element auswählen', selectParent],
     ['duplicateBlock', 'duplicate', 'Element duplizieren', duplicate],
-    ['elementProps', 'hb-palette', 'Element: Farben & Eigenschaften', editProps],
+    ['elementProps', 'hb-palette', 'Element: Farben, Eigenschaften & Sichtbarkeit', editProps],
+    ...(blockVisibility ? [['toggleElementHidden', 'preview', 'Element ein-/ausblenden', toggleHidden] as [string, string, string, () => void]] : []),
     ['moveElementUp', 'hb-arrow-up', 'Element nach oben verschieben', () => move(-1)],
     ['moveElementDown', 'hb-arrow-down', 'Element nach unten verschieben', () => move(1)],
     ['deleteElement', 'remove', 'Element löschen', remove],

@@ -1,4 +1,5 @@
 import type { Editor } from 'tinymce';
+import { FROM_ATTR, HIDDEN_ATTR, UNTIL_ATTR, isValidDay } from '../utils/blockVisibility';
 
 // "Element: Farben & Eigenschaften" dialog for the TinyMCE editor
 // (RichHtmlInput.tsx) - opened from the floating element toolbar, the
@@ -64,9 +65,12 @@ interface DialogData {
   alt: string;
   className: string;
   style: string;
+  status: 'published' | 'hidden';
+  from: string;
+  until: string;
 }
 
-export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: () => void) => {
+export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: () => void, { blockVisibility = false } = {}) => {
   const dom = editor.dom;
   const isImg = el.nodeName === 'IMG';
   const link = (el.nodeName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null;
@@ -85,6 +89,9 @@ export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: 
     alt: isImg ? el.getAttribute('alt') || '' : '',
     className: el.getAttribute('class') || '',
     style: el.getAttribute('style') || '',
+    status: el.hasAttribute(HIDDEN_ATTR) ? 'hidden' : 'published',
+    from: el.getAttribute(FROM_ATTR) || '',
+    until: el.getAttribute(UNTIL_ATTR) || '',
   };
 
   const colorItems: any[] = [
@@ -134,6 +141,16 @@ export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: 
     { type: 'textarea', name: 'style', label: 'Inline-CSS (style)', maximized: false },
   );
 
+  // Joomla's module Status + "Veröffentlichung starten/beenden", per element.
+  const visibilityItems: any[] = [
+    { type: 'htmlpanel', html: '<p style="margin:0 0 8px;color:#555">Wie ein Modul in Joomla: ausblenden statt löschen, oder nur in einem Zeitraum anzeigen. Ausgeblendete Elemente bleiben im Editor (blass, rot umrandet) und können jederzeit wieder eingeblendet werden.</p>' },
+    { type: 'selectbox', name: 'status', label: 'Status', items: [{ value: 'published', text: 'Veröffentlicht (sichtbar)' }, { value: 'hidden', text: 'Versteckt (nicht auf der Webseite)' }] },
+    { type: 'grid', columns: 2, items: [
+      { type: 'input', name: 'from', label: 'Anzeigen ab (JJJJ-MM-TT, leer = sofort)', placeholder: '2027-01-15' },
+      { type: 'input', name: 'until', label: 'Anzeigen bis (JJJJ-MM-TT, leer = unbegrenzt)', placeholder: '2027-02-28' },
+    ] },
+  ];
+
   const setColor = (target: HTMLElement, prop: string, value: string) => {
     if (prop === 'border-color' && value) {
       const current = target.ownerDocument.defaultView?.getComputedStyle(target).borderStyle;
@@ -172,6 +189,11 @@ export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: 
         if (data.bgImage.value) dom.setStyles(el, { 'background-image': `url('${data.bgImage.value}')`, 'background-size': el.style.backgroundSize || 'cover', 'background-position': el.style.backgroundPosition || 'center' });
         else dom.setStyle(el, 'background-image', '');
       }
+      if (blockVisibility && data.status !== initial.status) dom.setAttrib(el, HIDDEN_ATTR, data.status === 'hidden' ? '1' : null);
+      if (blockVisibility) ([['from', FROM_ATTR], ['until', UNTIL_ATTR]] as const).forEach(([key, attr]) => {
+        const value = data[key].trim();
+        if (value !== initial[key]) dom.setAttrib(el, attr, isValidDay(value) ? value : null);
+      });
       if (link && (data.href !== initial.href || data.newTab !== initial.newTab)) {
         dom.setAttrib(link, 'href', data.href);
         dom.setAttrib(link, 'target', data.newTab ? '_blank' : null);
@@ -190,6 +212,7 @@ export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: 
       tabs: [
         { name: 'colors', title: 'Farben', items: colorItems },
         { name: 'props', title: 'Eigenschaften', items: otherItems },
+        ...(blockVisibility ? [{ name: 'visibility', title: 'Sichtbarkeit', items: visibilityItems }] : []),
       ],
     },
     initialData: initial as any,
@@ -202,6 +225,12 @@ export const openElementPropsDialog = (editor: Editor, el: HTMLElement, onDone: 
       if (details.name === 'clearColors') api.setData({ textColor: '', bgColor: '', borderColor: '' } as any);
     },
     onSubmit: (api: any) => {
+      const d = api.getData() as DialogData;
+      const bad = [d.from, d.until].map((v) => v.trim()).filter((v) => v && !isValidDay(v));
+      if (bad.length) {
+        editor.notificationManager.open({ text: `Ungültiges Datum: ${bad.join(', ')} - bitte im Format JJJJ-MM-TT (z.B. 2027-01-15).`, type: 'warning', timeout: 4000 });
+        return;
+      }
       apply(api.getData() as unknown as DialogData);
       api.close();
     },
