@@ -39,6 +39,9 @@ export const COLOR_MAP = [
   'E8F4FA', 'Blau hell',
 ];
 
+// Same palette in the format the table plugin's colour menus want.
+export const TABLE_COLOR_MAP = Array.from({ length: COLOR_MAP.length / 2 }, (_, i) => ({ title: COLOR_MAP[i * 2 + 1], value: `#${COLOR_MAP[i * 2]}` }));
+
 interface MenuNode { label: string; url: string; subItems?: MenuNode[] }
 type LinkItem = { title: string; value: string } | { title: string; menu: LinkItem[] };
 

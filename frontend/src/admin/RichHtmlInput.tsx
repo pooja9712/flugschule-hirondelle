@@ -6,7 +6,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { ELEMENT_CLIPBOARD_CSS, registerElementClipboard } from './editorElementClipboard';
 import { openMediaBrowser, uploadEditorFile as uploadFile } from './editorMediaBrowser';
-import { COLOR_MAP, loadPageLinkList, registerJoomlaButtons } from './editorJoomlaButtons';
+import { COLOR_MAP, TABLE_COLOR_MAP, loadPageLinkList, registerJoomlaButtons } from './editorJoomlaButtons';
 import { LIVE_BLOCK_EDITOR_CSS } from '../utils/liveBlocks';
 
 // The editor canvas is an iframe, so it doesn't see the site's stylesheet on
@@ -81,7 +81,18 @@ a{color:#1a73e8;text-decoration:underline}
 a:has(div,img,h1,h2,h3,h4,p){display:block;color:inherit;text-decoration:none}
 ul,ol{padding-left:1.6em;margin:0 0 .6em}
 img{max-width:100%;max-height:320px;height:auto;display:block;margin:6px 0}
-table{border-collapse:collapse;width:100%;margin:0 0 1em}td,th{border:1px solid #bbb;padding:6px}
+table{border-collapse:collapse;width:100%;margin:0 0 1em}td,th{padding:8px 10px;vertical-align:middle}
+/* Real cell borders (over TinyMCE's dashed guides) unless a cell has its own. */
+td:not([style*="border"]),th:not([style*="border"]){border:1px solid #cbd5e1!important}
+th{font-weight:700;text-align:left}
+td a,th a{color:inherit;font-weight:700}
+/* The few text utilities the content relies on (site CSS isn't loaded here). */
+.text-right{text-align:right}.text-center{text-align:center}.text-left{text-align:left}
+.font-bold,.font-semibold{font-weight:700}.italic{font-style:italic}.uppercase{text-transform:uppercase}
+/* Videos / maps: 16:9, full width up to 720px (the responsive YouTube box sizes itself). */
+.mce-preview-object{display:block!important;max-width:720px;margin:8px 0}
+iframe{max-width:100%}
+:not([data-hb-video])>iframe,:not([data-hb-video])>.mce-preview-object>iframe{width:100%!important;height:auto!important;aspect-ratio:16/9;border:0}
 /* Elements that only hold a background image: show the image itself. */
 [style*="background-image"]{display:block!important;min-height:180px;max-width:480px;background-size:cover!important;background-position:center!important;margin:6px 0}
 /* Empty decoration boxes (overlays, frames) have nothing to edit - hidden
@@ -226,8 +237,21 @@ export const RichHtmlInput = ({
                 uploadFile(blobInfo.blob(), blobInfo.filename()),
               table_default_attributes: { border: '1' },
               table_default_styles: { 'border-collapse': 'collapse', width: '100%' },
+              // Clicking into a table: Joomla's table toolbar incl. cell colours
+              // from the site palette.
+              table_toolbar: 'tableprops tabledelete | tableinsertrowbefore tableinsertrowafter tabledeleterow | tableinsertcolbefore tableinsertcolafter tabledeletecol | tablecellbackgroundcolor tablecellbordercolor | tablecellprops tablerowprops tablemergecells tablesplitcells',
+              table_background_color_map: TABLE_COLOR_MAP,
+              table_border_color_map: TABLE_COLOR_MAP,
+              table_advtab: true,
+              table_cell_advtab: true,
+              table_row_advtab: true,
               // Keep every tag/attribute exactly as written, so custom layouts
               // (Tailwind classes, inline styles, embeds) survive a round trip.
+              // TinyMCE would add sandbox="" to every iframe outside its short
+              // allow-list (youtube-nocookie, Google Maps...), which blacks out
+              // the player here and breaks the embed on the site once saved.
+              // Content is admin-authored and sanitized again on output.
+              sandbox_iframes: false,
               valid_elements: '*[*]',
               extended_valid_elements: '*[*]',
               valid_children: '+body[style|link],+a[div|h1|h2|h3|h4|h5|h6|p|span|img|ul|ol|li|section]',
