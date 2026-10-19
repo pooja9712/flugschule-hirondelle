@@ -64,6 +64,9 @@ interface HomeContentData {
   // in their place for a duplicate, same as this page's own "Seiten"/
   // DynamicPage.tsx CMS flow already does for an admin-authored page body.
   bodyHtml: string;
+  // "html" once saved from the Joomla-style editor: the public page then
+  // shows exactly bodyHtml, even when it is empty (Home.tsx).
+  bodyMode?: string;
 }
 
 const DEFAULTS: HomeContentData = {
@@ -200,7 +203,7 @@ export const HomeContentEditor = () => {
     return fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(contentId ? { data: content } : content),
+      body: JSON.stringify(contentId ? { data: joomlaTrial ? { ...content, bodyMode: 'html' } : content } : content),
     })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Speichern fehlgeschlagen');

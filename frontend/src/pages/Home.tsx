@@ -55,6 +55,8 @@ interface HomeContentData {
   // blob that replaces the promo-cards/news/hoch-hinaus/team sections below
   // entirely when present, instead of sitting alongside them.
   bodyHtml?: string;
+  // "html": saved from the Joomla-style editor - see bodyOnly below.
+  bodyMode?: string;
 }
 
 // contentId is set only when this component is rendered as a fixed-page
@@ -82,6 +84,10 @@ export const Home = ({ contentId }: { contentId?: string } = {}) => {
   const hochHinausEyebrowLinkText = homeContent?.hochHinausEyebrowLinkText || DEFAULT_SECTION_TITLES.hochHinausEyebrowLinkText;
   const hochHinausTitle = homeContent?.hochHinausTitle || DEFAULT_SECTION_TITLES.hochHinausTitle;
   const teamLink = homeContent?.teamLink || '/infos/team';
+  // A page saved from the Joomla-style editor (bodyMode "html") always shows
+  // exactly its body - an emptied body means an empty page, not a fallback
+  // to the built-in design below.
+  const bodyOnly = !!contentId && homeContent?.bodyMode === 'html';
   const customBodyHtml = contentId ? homeContent?.bodyHtml : undefined;
   // Only ever promotes an admin-uploaded URL once the browser has actually
   // confirmed it loads - otherwise a stale/deleted upload would flash the
@@ -337,10 +343,10 @@ export const Home = ({ contentId }: { contentId?: string } = {}) => {
       </section>
       */}
 
-      {customBodyHtml ? (
+      {bodyOnly || customBodyHtml ? (
         <section className="pt-8 pb-24 bg-white">
           <div className="container mx-auto px-4 lg:px-8 max-w-[1200px]">
-            <SafeHtml html={customBodyHtml} className="home-body-content" />
+            <SafeHtml html={customBodyHtml || ''} className="home-body-content" />
           </div>
         </section>
       ) : (

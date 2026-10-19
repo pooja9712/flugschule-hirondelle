@@ -169,9 +169,9 @@ export const RichHtmlInput = ({
                 insert: { title: 'Insert', items: 'image link media hbMediaImage hbMediaFile codesample inserttable | hbTemplatesMenu | charmap emoticons hr | pagebreak hbReadmore nonbreaking anchor | insertdatetime accordion' },
               },
               contextmenu: 'clipboardCut clipboardCopy clipboardPaste | selectParent duplicateBlock moveElementUp moveElementDown deleteElement | elementProps toggleElementHidden | link image table',
-              // Overflow tools open as a popup behind "..." that starts closed
-              // and closes again on its own, instead of a drawer left open.
-              toolbar_mode: 'floating',
+              // All tools visible: the "..." drawer is opened on load (below)
+              // and pushes the content down instead of covering it.
+              toolbar_mode: 'sliding',
               toolbar_sticky: true,
               plugins: [
                 'accordion', 'advlist', 'anchor', 'autolink', 'charmap', 'code', 'codesample',
@@ -240,6 +240,9 @@ export const RichHtmlInput = ({
                 registerElementClipboard(editor, { blockVisibility });
                 // Joomla's "CMS-Inhalt" and "Vorlagen" buttons.
                 registerJoomlaButtons(editor);
+                editor.on('init', () => {
+                  if (!editor.queryCommandState('ToggleToolbarDrawer')) editor.execCommand('ToggleToolbarDrawer');
+                });
                 if (plain) registerEmptyDecorationMarker(editor);
 
                 // The open-source TinyMCE build has no print button.

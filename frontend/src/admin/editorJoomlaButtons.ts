@@ -112,6 +112,17 @@ const TEMPLATES: Array<{ title: string; html: string }> = [
   { title: 'Abstand', html: `<div style="height:48px;"></div>` },
 ];
 
+interface DownloadCategory { title: string; files: { title: string; fileUrl: string }[] }
+
+// Download categories + files (Admin > Downloads), for "CMS-Inhalt > Download".
+const loadDownloads = (): Promise<DownloadCategory[]> =>
+  fetch('/api/downloads/public')
+    .then((r) => (r.ok ? r.json() : []))
+    .then((cats: DownloadCategory[]) => cats.filter((c) => c.files?.length))
+    .catch(() => []);
+
+const pageLinkList = () => new Promise<LinkItem[]>((resolve) => loadPageLinkList(resolve));
+
 export const registerJoomlaButtons = (editor: Editor) => {
   const insertBlock = (html: string) => {
     // Inside a linked card/button a block can't go at the caret (a link in
@@ -141,6 +152,24 @@ export const registerJoomlaButtons = (editor: Editor) => {
       insertBlock(`<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`);
     });
 
+  // A link with the selected text (or the given label) as its text.
+  const insertLink = (href: string, label: string) => {
+    const text = editor.selection.isCollapsed() ? editor.dom.encode(label) : editor.selection.getContent();
+    editor.undoManager.transact(() => editor.insertContent(`<a href="${editor.dom.encode(href)}">${text}</a>`));
+    editor.nodeChanged();
+  };
+  const linkMenuItems = (items: LinkItem[]): any[] => items.map((item) =>
+    'menu' in item
+      ? { type: 'nestedmenuitem', text: item.title, getSubmenuItems: () => linkMenuItems(item.menu) }
+      : { type: 'menuitem', text: item.title, onAction: () => insertLink(item.value, item.title) });
+  const downloadMenuItems = (cats: DownloadCategory[]): any[] => cats.length
+    ? cats.map((c) => ({
+      type: 'nestedmenuitem',
+      text: c.title,
+      getSubmenuItems: () => c.files.map((file) => ({ type: 'menuitem', text: file.title, onAction: () => insertLink(file.fileUrl, file.title) })),
+    }))
+    : [{ type: 'menuitem', text: 'Keine Downloads vorhanden', enabled: false, onAction: () => {} }];
+
   const insertReadmore = () => insertBlock('<hr id="system-readmore">');
 
   editor.ui.registry.addMenuItem('hbMediaImage', { icon: 'image', text: 'Bild aus Medien', onAction: () => { void insertMediaImage(); } });
@@ -163,13 +192,20 @@ export const registerJoomlaButtons = (editor: Editor) => {
   editor.ui.registry.addMenuButton('hbCmsContent', {
     text: 'CMS-Inhalt',
     tooltip: 'CMS-Inhalt einfügen',
-    fetch: (done) => done([
-      { type: 'menuitem', icon: 'image', text: 'Bild aus Medien', onAction: () => { void insertMediaImage(); } },
-      { type: 'menuitem', icon: 'document-properties', text: 'Datei aus Medien (Download-Link)', onAction: () => { void insertMediaFile(); } },
-      { type: 'menuitem', icon: 'link', text: 'Link zu einer Seite / URL', onAction: () => editor.execCommand('mceLink') },
+    // Same entries as Joomla's "CMS Inhalt" (Beitrag, Medien, Menü, Download),
+    // plus page break / read more / templates. Menü and Download are loaded
+    // when the menu opens.
+    fetch: (done) => {
+      Promise.all([pageLinkList(), loadDownloads()]).then(([pages, downloads]) => done([
+      { type: 'menuitem', icon: 'link', text: 'Beitrag / Seite (Link-Dialog)', onAction: () => editor.execCommand('mceLink') },
+      { type: 'menuitem', icon: 'image', text: 'Medien: Bild', onAction: () => { void insertMediaImage(); } },
+      { type: 'menuitem', icon: 'document-properties', text: 'Medien: Datei (Download-Link)', onAction: () => { void insertMediaFile(); } },
+      { type: 'nestedmenuitem', icon: 'link', text: 'Menü', getSubmenuItems: () => linkMenuItems(pages) },
+      { type: 'nestedmenuitem', icon: 'save', text: 'Download', getSubmenuItems: () => downloadMenuItems(downloads) },
       { type: 'menuitem', icon: 'page-break', text: 'Seitenumbruch', onAction: () => editor.execCommand('mcePageBreak') },
       { type: 'menuitem', icon: 'horizontal-rule', text: 'Weiterlesen', onAction: insertReadmore },
       { type: 'nestedmenuitem', icon: 'template', text: 'Vorlage', getSubmenuItems: () => templateItems() },
-    ]),
+      ] as any));
+    },
   });
 };
