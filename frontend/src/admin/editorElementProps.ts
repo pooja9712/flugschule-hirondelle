@@ -28,11 +28,29 @@ const TAG_NAMES: Record<string, string> = {
   DIV: 'Box', SPAN: 'Text', BLOCKQUOTE: 'Zitat', FIGURE: 'Abbildung', BUTTON: 'Button', HR: 'Trennlinie', IFRAME: 'Einbettung',
 };
 
-export const describeElement = (el: Element): string => {
-  const name = TAG_NAMES[el.nodeName] || el.nodeName.toLowerCase();
-  const cls = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean)[0];
-  return cls ? `${name} .${cls}` : name;
+const BLOCK_CHILD = 'div,section,article,p,h1,h2,h3,h4,h5,h6,img,ul,ol,table,figure';
+const short = (text: string, max = 30) => {
+  const t = text.replace(/\s+/g, ' ').trim();
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 };
+
+// A plain-language name for the toolbar/dialogs - what the element is for an
+// editor (Button, Bild, Text, Überschrift...), not its HTML tag or classes.
+export const describeElement = (el: Element): string => {
+  if (el.nodeName === 'A') {
+    return el.querySelector(BLOCK_CHILD) ? 'Verlinkter Block' : `Button/Link „${short(el.textContent || '')}“`;
+  }
+  if ((el as HTMLElement).style?.backgroundImage) return 'Hintergrundbild';
+  if (el.nodeName === 'DIV' || el.nodeName === 'SECTION' || el.nodeName === 'ARTICLE') {
+    return el.querySelector(BLOCK_CHILD) ? 'Bereich' : `Text „${short(el.textContent || '', 24)}“`;
+  }
+  return TAG_NAMES[el.nodeName] || el.nodeName.toLowerCase();
+};
+
+// The link an element is (or sits in), e.g. a button, a linked card or a
+// linked image.
+export const linkOf = (el: Element): HTMLAnchorElement | null =>
+  (el.nodeName === 'A' ? el : el.closest('a')) as HTMLAnchorElement | null;
 
 type Scope = 'self' | 'table' | 'row' | 'cells' | 'header';
 

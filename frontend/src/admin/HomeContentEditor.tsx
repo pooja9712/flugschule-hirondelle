@@ -284,7 +284,7 @@ export const HomeContentEditor = () => {
         <Typography variant="h5">Startseite - Inhalte</Typography>
         {joomlaTrial ? (
           <JoomlaPageActions
-            slug={contentId!}
+            versionsUrl={`/api/sitepagecontent/${encodeURIComponent(contentId!)}/versions`}
             previewPath={previewPath}
             saving={saving}
             onSave={handleSave}

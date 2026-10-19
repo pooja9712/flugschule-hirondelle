@@ -24,16 +24,19 @@ const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('auth
 interface Version { savedAt: string; bodyHtml: string }
 
 interface Props {
-  slug: string;
+  // Admin endpoint listing this page's earlier versions.
+  versionsUrl: string;
   previewPath: string;
   saving: boolean;
   // Resolves to the (possibly renamed) slug, or null when saving failed.
   onSave: () => Promise<string | null>;
   onRestore: (bodyHtml: string) => void;
-  editPathFor: (slug: string) => string;
+  // Only for pages that can be copied (Startseite copies): the editor
+  // route for a slug. Without it there is no "Als Kopie speichern".
+  editPathFor?: (slug: string) => string;
 }
 
-export const JoomlaPageActions = ({ slug, previewPath, saving, onSave, onRestore, editPathFor }: Props) => {
+export const JoomlaPageActions = ({ versionsUrl, previewPath, saving, onSave, onRestore, editPathFor }: Props) => {
   const navigate = useNavigate();
   const notify = useNotify();
   const [versions, setVersions] = useState<Version[] | null>(null);
@@ -50,12 +53,12 @@ export const JoomlaPageActions = ({ slug, previewPath, saving, onSave, onRestore
       const dup = await res.json().catch(() => ({}));
       if (!res.ok) { notify(dup.error || 'Kopie konnte nicht erstellt werden', { type: 'error' }); return; }
       notify(`Kopie „${dup.title}“ erstellt - Sie bearbeiten jetzt die Kopie.`, { type: 'success' });
-      navigate(editPathFor(dup.slug));
+      navigate(editPathFor!(dup.slug));
     });
 
   const openVersions = () => {
     setVersions([]);
-    fetch(`/api/sitepagecontent/${encodeURIComponent(slug)}/versions`, { headers: authHeaders() })
+    fetch(versionsUrl, { headers: authHeaders() })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error())))
       .then(setVersions)
       .catch(() => { setVersions(null); notify('Versionen konnten nicht geladen werden', { type: 'error' }); });
@@ -75,7 +78,7 @@ export const JoomlaPageActions = ({ slug, previewPath, saving, onSave, onRestore
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
         <Button variant="contained" color="success" startIcon={<SaveIcon />} onClick={() => { void onSave(); }} disabled={saving}>Speichern</Button>
         <Button variant="outlined" color="success" startIcon={<CheckIcon />} onClick={() => { void saveAndClose(); }} disabled={saving}>Speichern &amp; Schließen</Button>
-        <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={() => { void saveAsCopy(); }} disabled={saving}>Als Kopie speichern</Button>
+        {editPathFor && <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={() => { void saveAsCopy(); }} disabled={saving}>Als Kopie speichern</Button>}
         <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersions}>Versionen</Button>
         <Button variant="outlined" component="a" href={previewPath} target="_blank" rel="noopener noreferrer" startIcon={<OpenInNewIcon />}>Vorschau</Button>
         <Button variant="outlined" color="error" startIcon={<CloseIcon />} onClick={close}>Schließen</Button>

@@ -1,5 +1,5 @@
 import type { Editor } from 'tinymce';
-import { describeElement, openElementPropsDialog } from './editorElementProps';
+import { describeElement, linkOf, openElementPropsDialog } from './editorElementProps';
 import { FROM_ATTR, HIDDEN_ATTR, UNTIL_ATTR, isBlockLive } from '../utils/blockVisibility';
 
 // Element-level editing for the TinyMCE editor (RichHtmlInput.tsx),
@@ -298,6 +298,17 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
     notify(hide ? `${describeElement(el)} ausgeblendet - erscheint nicht mehr auf der Webseite` : `${describeElement(el)} wieder sichtbar`);
   };
 
+  // Opens TinyMCE's link dialog for the picked button / linked card / linked
+  // image (or adds a link to a picked text or image).
+  const editLink = () => {
+    const el = requirePick('zu verlinken');
+    if (!el) return;
+    const a = linkOf(el);
+    if (el.nodeName === 'IMG') editor.selection.select(el);
+    else editor.selection.select(a || el, !a);
+    editor.execCommand('mceLink');
+  };
+
   const editProps = () => {
     const el = requirePick('bearbeiten');
     if (el) openElementPropsDialog(editor, el, changed, { blockVisibility });
@@ -336,6 +347,7 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
       ['duplicate', '2', 'Duplizieren', duplicate],
       ['hb-arrow-up', '↑', 'Nach oben verschieben', () => move(-1)],
       ['hb-arrow-down', '↓', 'Nach unten verschieben', () => move(1)],
+      ['link', '🔗', 'Link bearbeiten / hinzufügen', editLink],
       ...(blockVisibility ? [['preview', '👁', 'Ein-/Ausblenden (veröffentlicht / versteckt)', toggleHidden] as [string, string, string, () => void]] : []),
       ['hb-palette', '🎨', 'Farben, Eigenschaften & Sichtbarkeit', editProps],
       ['remove', '🗑', 'Element löschen', remove, 'hb-danger'],
@@ -378,7 +390,8 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
     if (!el) { toolbar.style.display = 'none'; return; }
     const state = el.hasAttribute(HIDDEN_ATTR) ? ' (versteckt)'
       : el.hasAttribute(FROM_ATTR) || el.hasAttribute(UNTIL_ATTR) ? (isBlockLive(el) ? ' (zeitgesteuert)' : ' (zeitgesteuert, gerade nicht sichtbar)') : '';
-    label!.textContent = describeElement(el) + state;
+    const href = linkOf(el)?.getAttribute('href');
+    label!.textContent = describeElement(el) + state + (href ? `  →  ${href}` : '');
     label!.title = describeElement(el);
     toolbar.style.display = 'flex';
     const rect = el.getBoundingClientRect();

@@ -7,6 +7,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { ELEMENT_CLIPBOARD_CSS, registerElementClipboard } from './editorElementClipboard';
 import { openMediaBrowser, uploadEditorFile as uploadFile } from './editorMediaBrowser';
 import { COLOR_MAP, loadPageLinkList, registerJoomlaButtons } from './editorJoomlaButtons';
+import { LIVE_BLOCK_EDITOR_CSS } from '../utils/liveBlocks';
 
 // The editor canvas is an iframe, so it doesn't see the site's stylesheet on
 // its own. Hand it whatever the admin document has loaded: Vite injects the
@@ -59,25 +60,33 @@ interface RichHtmlInputProps {
   blockVisibility?: boolean;
 }
 
-// Canvas styles for contentOnly mode: readable plain content, no site CSS.
+// The site's web fonts (index.html / index.css), loaded into the content-only
+// canvas too so every entry of the font dropdown actually shows.
+const SITE_FONT_URLS = [
+  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Jost:wght@300;400;500;600&display=swap',
+  'https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&family=PT+Sans+Narrow:wght@400;700&display=swap',
+];
+
+// Canvas styles for contentOnly mode - plain content like Joomla's editor
+// (headings, texts, buttons/links, images, tables), no site CSS, no layout
+// boxes or labels. Links/buttons show their target in the element toolbar
+// when clicked (editorElementClipboard.ts).
 const CONTENT_ONLY_CSS = `
 body{font-family:"Segoe UI",Arial,sans-serif;font-size:15px;line-height:1.6;color:#222;background:#fff;margin:0;padding:16px 20px;}
-h1,h2,h3,h4,h5,h6{font-weight:700;line-height:1.3;margin:.6em 0 .3em;}
-h1{font-size:26px}h2{font-size:22px}h3{font-size:19px}h4{font-size:17px}h5,h6{font-size:15px}
+h1,h2,h3,h4,h5,h6{font-weight:700;line-height:1.3;margin:.6em 0 .3em;color:#2a5db0}
+h1{font-size:28px}h2{font-size:24px}h3{font-size:20px}h4{font-size:17px}h5,h6{font-size:15px}
 p{margin:0 0 .6em}
 a{color:#1a73e8;text-decoration:underline}
+/* A link wrapping a whole card (heading + image + text): plain content. */
+a:has(div,img,h1,h2,h3,h4,p){display:block;color:inherit;text-decoration:none}
 ul,ol{padding-left:1.6em;margin:0 0 .6em}
-img{max-width:220px;max-height:160px;height:auto;display:block;margin:4px 0;border:1px solid #ddd}
-table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:6px}
-/* Elements that only hold a background image: show the image as a thumbnail. */
-[style*="background-image"]{display:block!important;min-height:90px;max-width:220px;background-size:cover!important;background-position:center!important;border:1px solid #ddd;margin:4px 0}
+img{max-width:100%;max-height:320px;height:auto;display:block;margin:6px 0}
+table{border-collapse:collapse;width:100%;margin:0 0 1em}td,th{border:1px solid #bbb;padding:6px}
+/* Elements that only hold a background image: show the image itself. */
+[style*="background-image"]{display:block!important;min-height:180px;max-width:480px;background-size:cover!important;background-position:center!important;margin:6px 0}
 /* Empty decoration boxes (overlays, frames) have nothing to edit - hidden
-   (marked by markEmptyDecoration below). */
+   (marked by registerEmptyDecorationMarker below). */
 [data-hb-empty]{display:none!important}
-/* A link wrapping a whole card: show it as a link block with its target,
-   not as blue underlined text. */
-a:has(div,img,h1,h2,h3,h4,p){display:block;color:inherit;text-decoration:none;border-left:3px solid #1a73e8;padding-left:8px;margin:6px 0}
-a:has(div,img,h1,h2,h3,h4,p)::before{content:"Link: " attr(href);display:block;font:600 11px "Segoe UI",Arial,sans-serif;color:#1a73e8}
 `;
 
 const EMPTY_ATTR = 'data-hb-empty';
@@ -92,7 +101,8 @@ const registerEmptyDecorationMarker = (editor: TinyEditor) => {
     editor.getBody().querySelectorAll<HTMLElement>('div').forEach((d) => {
       const empty = !(d.textContent || '').trim()
         && !d.querySelector('img,iframe,video,audio,table,hr,input,svg,[style*="background-image"]')
-        && !d.style.backgroundImage;
+        && !d.style.backgroundImage
+        && !d.hasAttribute('data-live-block');
       if (empty) d.setAttribute(EMPTY_ATTR, '1');
       else d.removeAttribute(EMPTY_ATTR);
     });
@@ -224,16 +234,13 @@ export const RichHtmlInput = ({
               convert_urls: false,
               relative_urls: false,
               remove_script_host: false,
-              content_css: plain ? 'default' : siteStyles.links,
+              content_css: plain ? ['default', ...SITE_FONT_URLS] : siteStyles.links,
               body_class: plain ? '' : bodyClass,
-              // Block outlines with tag names, so the structure stays visible
-              // without the page design.
-              visualblocks_default_state: plain,
               content_style: plain
-                ? CONTENT_ONLY_CSS + ELEMENT_CLIPBOARD_CSS
+                ? CONTENT_ONLY_CSS + ELEMENT_CLIPBOARD_CSS + LIVE_BLOCK_EDITOR_CSS
                 : siteStyles.inline +
                   `\nbody{margin:0 auto;padding:24px;background:#fff;${contentMaxWidth ? `max-width:${contentMaxWidth}px;` : ''}}\n` +
-                  ELEMENT_CLIPBOARD_CSS,
+                  ELEMENT_CLIPBOARD_CSS + LIVE_BLOCK_EDITOR_CSS,
               setup: (editor) => {
                 // Copy/cut/paste whole elements (boxes, images, text), plus
                 // "select parent" and "duplicate" - see editorElementClipboard.ts.

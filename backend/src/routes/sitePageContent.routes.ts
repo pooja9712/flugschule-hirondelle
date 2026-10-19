@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../utils/prisma';
+import { VERSIONS_PREFIX, keepVersion, listVersions } from '../utils/pageVersions';
 import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -1849,13 +1850,8 @@ export const DEFAULTS: Record<string, any> = {
 // legitimate as long as a row actually exists for it - DEFAULTS is only
 // ever a fallback for the original 6, never a valid answer for an id it
 // doesn't recognize.
-// Joomla-style content history ("Versionen") for whole-page bodies: every
-// save of a row whose data has a `bodyHtml` keeps the previous body in a
-// separate row "versions--<id>" (newest first, MAX_VERSIONS kept). Admin
-// only - never served by the public route below.
-const VERSIONS_PREFIX = 'versions--';
-const MAX_VERSIONS = 20;
-interface BodyVersion { savedAt: string; bodyHtml: string }
+// Joomla-style content history ("Versionen") - see utils/pageVersions.ts.
+// Never served by the public route below.
 
 router.get('/public/:id', async (req, res) => {
   try {
@@ -1877,8 +1873,7 @@ router.get('/public/:id', async (req, res) => {
 // DEFAULTS fallback.
 router.get('/:id/versions', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
-    const row = await prisma.sitePageContent.findUnique({ where: { id: VERSIONS_PREFIX + String(req.params.id) } });
-    res.json(((row?.data as any)?.versions || []) as BodyVersion[]);
+    res.json(await listVersions(String(req.params.id)));
   } catch (error) {
     console.error('Error fetching page versions:', error);
     res.status(500).json({ error: 'Failed to fetch versions' });
@@ -1906,17 +1901,7 @@ router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
     const existing = await prisma.sitePageContent.findUnique({ where: { id } });
     if (!existing && !DEFAULTS[id]) return res.status(404).json({ error: 'Unknown page' });
     const data = req.body.data !== undefined ? req.body.data : req.body;
-    const oldBody = (existing?.data as any)?.bodyHtml;
-    if (!id.startsWith(VERSIONS_PREFIX) && typeof oldBody === 'string' && oldBody && oldBody !== data?.bodyHtml) {
-      const vRow = await prisma.sitePageContent.findUnique({ where: { id: VERSIONS_PREFIX + id } });
-      const versions = [{ savedAt: new Date().toISOString(), bodyHtml: oldBody }, ...(((vRow?.data as any)?.versions || []) as BodyVersion[])]
-        .slice(0, MAX_VERSIONS);
-      await prisma.sitePageContent.upsert({
-        where: { id: VERSIONS_PREFIX + id },
-        update: { data: { versions } as any },
-        create: { id: VERSIONS_PREFIX + id, data: { versions } as any },
-      });
-    }
+    if (!id.startsWith(VERSIONS_PREFIX)) await keepVersion(id, (existing?.data as any)?.bodyHtml, data?.bodyHtml);
     const row = await prisma.sitePageContent.upsert({
       where: { id },
       update: { data },
