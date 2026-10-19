@@ -319,7 +319,7 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
 
   const editProps = () => {
     const el = requirePick('bearbeiten');
-    if (el) openElementPropsDialog(editor, el, changed, { blockVisibility });
+    if (el) openElementPropsDialog(editor, el, changed);
   };
 
   // ---------- outline + floating toolbar ----------
@@ -357,7 +357,7 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
       ['hb-arrow-down', '↓', 'Nach unten verschieben', () => move(1)],
       ['link', '🔗', 'Link bearbeiten / hinzufügen', editLink],
       ...(blockVisibility ? [['preview', '👁', 'Ein-/Ausblenden (veröffentlicht / versteckt)', toggleHidden] as [string, string, string, () => void]] : []),
-      ['hb-palette', '🎨', 'Farben, Eigenschaften & Sichtbarkeit', editProps],
+      ['hb-palette', '🎨', 'Farben', editProps],
       ['remove', '🗑', 'Element löschen', remove, 'hb-danger'],
     ];
     buttons.forEach(([iconName, fallback, title, action, cls]) => {
@@ -458,7 +458,7 @@ export const registerElementClipboard = (editor: Editor, { blockVisibility = fal
     ['clipboardPaste', 'paste', 'Einfügen', () => { void paste(); }],
     ['selectParent', 'chevron-up', 'Übergeordnetes Element auswählen', selectParent],
     ['duplicateBlock', 'duplicate', 'Element duplizieren', duplicate],
-    ['elementProps', 'hb-palette', 'Element: Farben, Eigenschaften & Sichtbarkeit', editProps],
+    ['elementProps', 'hb-palette', 'Element: Farben', editProps],
     ...(blockVisibility ? [['toggleElementHidden', 'preview', 'Element ein-/ausblenden', toggleHidden] as [string, string, string, () => void]] : []),
     ['moveElementUp', 'hb-arrow-up', 'Element nach oben verschieben', () => move(-1)],
     ['moveElementDown', 'hb-arrow-down', 'Element nach unten verschieben', () => move(1)],

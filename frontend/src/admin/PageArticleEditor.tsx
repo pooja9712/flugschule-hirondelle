@@ -18,17 +18,58 @@
 // the article icon in Pages.tsx (all marked "PAGE ARTICLE MODE").
 // =====================================================================
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useNotify } from 'react-admin';
-import { Box, Button, Card, CardContent, CircularProgress, FormControlLabel, Switch, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, CircularProgress, Typography } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RestoreIcon from '@mui/icons-material/Restore';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import { RichHtmlInput } from './RichHtmlInput';
 import { JoomlaPageActions } from './JoomlaPageActions';
 import { prepareImportedPage } from '../utils/liveBlocks';
+import { type PrimaryPageSettings, PrimaryPageSettingsFields } from './PrimaryPageSettingsFields';
+import { type FixedDuplicateMeta, FixedDuplicateMetaFields } from './FixedDuplicateMetaFields';
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('auth')}` });
+
+// The page's own Titel/URL/Status - the same settings bar as in its old
+// field editor. Which one depends on what the key is: one of the fixed
+// pages (its kind), a fixed-page copy (its slug) or a custom Seiten page
+// (its slug).
+type PageSettings =
+  | { type: 'fixed'; value: PrimaryPageSettings & { kind: string } }
+  | { type: 'duplicate' | 'page'; value: FixedDuplicateMeta };
+
+const loadSettings = async (key: string): Promise<PageSettings | null> => {
+  const fixed = await fetch(`/api/fixed-page-settings/${encodeURIComponent(key)}`, { headers: authHeaders() });
+  if (fixed.ok) return { type: 'fixed', value: await fixed.json() };
+  const dup = await fetch(`/api/fixed-page-duplicates/${encodeURIComponent(key)}`, { headers: authHeaders() });
+  if (dup.ok) return { type: 'duplicate', value: await dup.json() };
+  const pages = await fetch(`/api/pages?q=${encodeURIComponent(key)}&_end=1000`, { headers: authHeaders() });
+  if (pages.ok) {
+    const list = await pages.json();
+    const page = (Array.isArray(list) ? list : list.data || []).find((p: { slug: string }) => p.slug === key);
+    if (page) return { type: 'page', value: page };
+  }
+  return null;
+};
+
+// Saves the settings; resolves to the saved settings (slug possibly renamed).
+const saveSettings = async (settings: PageSettings): Promise<PageSettings> => {
+  const url = settings.type === 'fixed'
+    ? `/api/fixed-page-settings/${encodeURIComponent(settings.value.kind)}`
+    : settings.type === 'duplicate'
+      ? `/api/fixed-page-duplicates/${settings.value.id}`
+      : `/api/pages/${settings.value.id}`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(settings.value),
+  });
+  const updated = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(updated.error || 'Seiten-Einstellungen konnten nicht gespeichert werden');
+  return { ...settings, value: updated } as PageSettings;
+};
 
 // Loads the public page (original design, "?original=1") in a hidden iframe
 // and copies its rendered body - everything below the banner slider. Waits
@@ -73,17 +114,17 @@ const importRenderedPage = (path: string): Promise<string> =>
 export const PageArticleEditor = () => {
   const notify = useNotify();
   const navigate = useNavigate();
+  const location = useLocation();
   const { key = '' } = useParams<{ key: string }>();
   const [searchParams] = useSearchParams();
   const pagePath = searchParams.get('path') || `/${key}`;
-  const pageTitle = searchParams.get('title') || key;
   // The page's previous field-based editor, still reachable.
   const fieldsPath = searchParams.get('fields');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [enabled, setEnabled] = useState(true);
+  const [settings, setSettings] = useState<PageSettings | null>(null);
   const [html, setHtml] = useState('');
   const [fullWidth, setFullWidth] = useState(true);
   const [exists, setExists] = useState(false);
@@ -117,9 +158,9 @@ export const PageArticleEditor = () => {
         setHtml(data.html || '');
         // No editor content yet: start from the page as it is now, and
         // publish it with the first "Speichern" - like editing in Joomla.
-        setEnabled(data.exists ? !!data.enabled : true);
         if (!data.exists || !data.html) importPage(false);
       })
+      .then(() => loadSettings(key).then(setSettings).catch(() => setSettings(null)))
       .catch(() => notify('Fehler beim Laden', { type: 'error' }))
       .finally(() => setLoading(false));
     // importPage only reads the path for this key.
@@ -131,23 +172,41 @@ export const PageArticleEditor = () => {
       notify('Der Seiteninhalt wird noch geladen - bitte einen Moment warten.', { type: 'warning' });
       return Promise.resolve(null);
     }
-    if (enabled && !html.trim() && !window.confirm('Der Inhalt ist leer - die Seite zeigt dann keinen Inhalt. Trotzdem speichern?')) {
+    if (!html.trim() && !window.confirm('Der Inhalt ist leer - die Seite zeigt dann keinen Inhalt. Trotzdem speichern?')) {
       return Promise.resolve(null);
     }
     setSaving(true);
     return fetch(`/api/page-articles/${encodeURIComponent(key)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ enabled, html, fullWidth }),
+      body: JSON.stringify({ enabled: true, html, fullWidth }),
     })
-      .then((res) => {
-        if (!res.ok) throw new Error();
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Fehler beim Speichern');
         setExists(true);
-        notify(enabled ? 'Gespeichert - die Seite zeigt jetzt diesen Inhalt.' : 'Gespeichert - die Seite zeigt weiter das Original-Design.', { type: 'success' });
-        return key;
+        if (!settings) return key;
+        const saved = await saveSettings(settings);
+        setSettings(saved);
+        const title = encodeURIComponent(saved.value.title);
+        if (saved.type === 'fixed') {
+          // A fixed page keeps its key; only its preview URL may change.
+          const path = saved.value.slug ? `/${saved.value.slug}` : '/';
+          navigate(`/admin/page-article/${encodeURIComponent(key)}?path=${encodeURIComponent(path)}&title=${title}${fieldsPath ? `&fields=${encodeURIComponent(fieldsPath)}` : ''}`, { replace: true });
+          return key;
+        }
+        // A copy or custom page renamed: its editor content moved along with
+        // it (backend), so reopen the editor under the new URL.
+        const slug = saved.value.slug;
+        const fields = fieldsPath && fieldsPath.endsWith(`/${key}`) ? `${fieldsPath.slice(0, -key.length)}${slug}` : fieldsPath;
+        navigate(`/admin/page-article/${encodeURIComponent(slug)}?path=${encodeURIComponent(`/${slug}`)}&title=${title}${fields ? `&fields=${encodeURIComponent(fields)}` : ''}`, { replace: true });
+        return slug;
       })
-      .catch(() => {
-        notify('Fehler beim Speichern', { type: 'error' });
+      .then((slug) => {
+        notify('Gespeichert', { type: 'success' });
+        return slug;
+      })
+      .catch((err) => {
+        notify(err.message || 'Fehler beim Speichern', { type: 'error' });
         return null;
       })
       .finally(() => setSaving(false));
@@ -170,7 +229,7 @@ export const PageArticleEditor = () => {
   return (
     <Box sx={{ p: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5">{pageTitle} - Seiteninhalt</Typography>
+        <Typography variant="h5">{settings?.value.title || searchParams.get('title') || key} - Seiteninhalt</Typography>
         <JoomlaPageActions
           versionsUrl={`/api/page-articles/${encodeURIComponent(key)}/versions`}
           previewPath={pagePath}
@@ -180,16 +239,15 @@ export const PageArticleEditor = () => {
         />
       </Box>
 
+      {settings?.type === 'fixed' && (
+        <PrimaryPageSettingsFields settings={settings.value} onChange={(value) => setSettings({ type: 'fixed', value: { ...settings.value, ...value } })} />
+      )}
+      {settings && settings.type !== 'fixed' && (
+        <FixedDuplicateMetaFields meta={settings.value} onChange={(value) => setSettings({ type: settings.type, value: { ...settings.value, ...value } })} />
+      )}
+
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <FormControlLabel
-            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
-            label={(
-              <Typography sx={{ fontWeight: 600 }}>
-                {enabled ? 'Status: Veröffentlicht - die Seite zeigt diesen Inhalt' : 'Status: Aus - die Seite zeigt ihr Original-Design'}
-              </Typography>
-            )}
-          />
           <Box sx={{ flexGrow: 1 }} />
           <Button
             variant="outlined"
@@ -200,7 +258,7 @@ export const PageArticleEditor = () => {
             Inhalt der Live-Seite neu übernehmen
           </Button>
           {fieldsPath && (
-            <Button variant="outlined" startIcon={<ListAltIcon />} onClick={() => navigate(fieldsPath)}>
+            <Button variant="outlined" startIcon={<ListAltIcon />} onClick={() => navigate(fieldsPath, { state: { backToArticle: location.pathname + location.search } })}>
               Felder-Editor (alt)
             </Button>
           )}

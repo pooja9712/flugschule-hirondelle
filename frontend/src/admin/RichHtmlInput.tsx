@@ -95,6 +95,9 @@ td a,th a{color:inherit;font-weight:700}
 .justify-between{justify-content:space-between}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}
 .items-start{align-items:flex-start}.items-center{align-items:center}.items-end{align-items:flex-end}
 .gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-6{gap:1.5rem}.whitespace-nowrap{white-space:nowrap}
+/* A row of images (e.g. the team photos) is shown one below the other,
+   like Joomla's editor - only text rows stay side by side. */
+.flex:has(img),.inline-flex:has(img){display:block!important}
 .border-b{border-bottom:1px solid #e5e7eb;padding-bottom:.5rem;margin-bottom:.75rem}
 .border-t{border-top:1px solid #e5e7eb;padding-top:.5rem}
 .border{border:1px solid #e5e7eb}

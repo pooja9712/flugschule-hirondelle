@@ -1159,8 +1159,13 @@ export const PagesManager = () => {
   // behaves identically either way.
   // PAGE ARTICLE MODE - opens the Joomla-style body editor for a page.
   // `fieldsPath`: the page's older field-based editor, linked from there.
+  const articleEditorUrl = (key: string, path: string, title: string, fieldsPath?: string) =>
+    `/admin/page-article/${encodeURIComponent(key)}?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}${fieldsPath ? `&fields=${encodeURIComponent(fieldsPath)}` : ''}`;
   const openArticleEditor = (key: string, path: string, title: string, fieldsPath?: string) =>
-    navigate(`/admin/page-article/${encodeURIComponent(key)}?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}${fieldsPath ? `&fields=${encodeURIComponent(fieldsPath)}` : ''}`);
+    navigate(articleEditorUrl(key, path, title, fieldsPath));
+  // The old field editor, with a way back to the new one (BackToArticleEditor.tsx).
+  const openFieldsEditor = (key: string, path: string, title: string, fieldsPath: string) =>
+    navigate(fieldsPath, { state: { backToArticle: articleEditorUrl(key, path, title, fieldsPath) } });
 
   const renderRow = (row: DisplayRow, indent = 0) => {
     const titleCellSx = { pl: indent ? 2 + indent * 3 : 2 };
@@ -1191,7 +1196,7 @@ export const PagesManager = () => {
             <IconButton size="small" onClick={() => openArticleEditor(page.kind, previewPath, title, page.editPath)} title="Bearbeiten">
               <EditIcon fontSize="small" />
             </IconButton>
-            <IconButton size="small" onClick={() => navigate(page.editPath)} title="Felder-Editor (alt)">
+            <IconButton size="small" onClick={() => openFieldsEditor(page.kind, previewPath, title, page.editPath)} title="Felder-Editor (alt)">
               <ArticleIcon fontSize="small" />
             </IconButton>
             <IconButton size="small" onClick={() => handleDuplicateFixed(page)} title="Duplizieren (erstellt eine neue Seite mit exakt dem gleichen Design/Layout)">
@@ -1208,12 +1213,9 @@ export const PagesManager = () => {
       const { dup } = row;
       const original = FIXED_PAGES.find((p) => p.kind === dup.kind);
       const editPath = original ? `${original.editPath}/${dup.slug}` : undefined;
-      // Startseite copies have their own one-editor screen (HomeContentEditor);
-      // every other copy opens the Joomla-style page editor.
-      const openEdit = () => {
-        if (dup.kind === 'home') { if (editPath) navigate(editPath); }
-        else openArticleEditor(dup.slug, `/${dup.slug}`, dup.title, editPath);
-      };
+      // Every copy (Startseite included) opens the Joomla-style page editor,
+      // which starts from the copy's current content - same as the originals.
+      const openEdit = () => openArticleEditor(dup.slug, `/${dup.slug}`, dup.title, editPath);
       return (
         <TableRow
           key={row.key}
@@ -1239,8 +1241,8 @@ export const PagesManager = () => {
               <EditIcon fontSize="small" />
             </IconButton>
             {/* PAGE ARTICLE MODE - the older field editor stays reachable */}
-            {editPath && dup.kind !== 'home' && (
-              <IconButton size="small" onClick={() => navigate(editPath)} title="Felder-Editor (alt)">
+            {editPath && (
+              <IconButton size="small" onClick={() => openFieldsEditor(dup.slug, `/${dup.slug}`, dup.title, editPath)} title="Felder-Editor (alt)">
                 <ArticleIcon fontSize="small" />
               </IconButton>
             )}

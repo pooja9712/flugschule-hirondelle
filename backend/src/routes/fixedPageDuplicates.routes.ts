@@ -222,6 +222,22 @@ async function slugTaken(slug: string): Promise<boolean> {
 // The content editors (AusbildungContentEditor.tsx etc.) only know a
 // duplicate by its slug (the :contentId route param), not its internal id -
 // so admin lookups/updates here accept either.
+// A page's Joomla-style editor content (PAGE ARTICLE MODE, see
+// pageArticle.routes.ts) lives in its own SitePageContent row "article--<key>".
+// Once an admin has edited the original with that editor, the public page
+// shows that content instead of the built-in design - so a duplicate must
+// take it over too, or the copy looks different/empty.
+const articleRowId = (key: string) => `article--${key}`;
+async function copyArticle(fromKey: string, toKey: string) {
+  const row = await prisma.sitePageContent.findUnique({ where: { id: articleRowId(fromKey) } });
+  if (!row) return;
+  await prisma.sitePageContent.upsert({
+    where: { id: articleRowId(toKey) },
+    update: { data: row.data as any },
+    create: { id: articleRowId(toKey), data: row.data as any },
+  });
+}
+
 const findByIdOrSlug = (idOrSlug: string) =>
   prisma.fixedPageDuplicate.findFirst({ where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] } });
 
@@ -303,6 +319,7 @@ router.post('/', authenticateJWT, authorizeAdmin, async (req, res) => {
     }
 
     await prisma.sitePageContent.create({ data: { id: slug, data } });
+    await copyArticle(kind, slug);
     const dup = await prisma.fixedPageDuplicate.create({
       data: { slug, kind, title: `${KIND_LABELS[kind]} (Kopie)`, showInNav: false },
     });
@@ -334,6 +351,7 @@ router.post('/:id/duplicate', authenticateJWT, authorizeAdmin, async (req, res) 
     }
 
     await prisma.sitePageContent.create({ data: { id: slug, data } });
+    await copyArticle(source.slug, slug);
     const dup = await prisma.fixedPageDuplicate.create({
       data: { slug, kind: source.kind, title: `${source.title} (Kopie)`, showInNav: false },
     });
@@ -364,6 +382,9 @@ router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
       await prisma.sitePageContent.delete({ where: { id: existing.slug } });
       // Its content history ("Versionen", sitePageContent.routes.ts) moves along.
       await prisma.sitePageContent.updateMany({ where: { id: `versions--${existing.slug}` }, data: { id: `versions--${newSlug}` } });
+      // So does its Joomla-editor content (and that content's versions).
+      await prisma.sitePageContent.updateMany({ where: { id: articleRowId(existing.slug) }, data: { id: articleRowId(newSlug) } });
+      await prisma.sitePageContent.updateMany({ where: { id: `versions--${articleRowId(existing.slug)}` }, data: { id: `versions--${articleRowId(newSlug)}` } });
     }
 
     const updated = await prisma.fixedPageDuplicate.update({
@@ -392,16 +413,17 @@ router.delete('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
     const dup = await prisma.fixedPageDuplicate.findUnique({ where: { id: req.params.id as string } });
     if (!dup) return res.status(404).json({ error: 'Not found' });
     const content = await prisma.sitePageContent.findUnique({ where: { id: dup.slug } });
+    const article = await prisma.sitePageContent.findUnique({ where: { id: articleRowId(dup.slug) } });
 
     await prisma.contentTrash.create({
       data: {
         kind: 'fixedpageduplicate',
         refId: dup.id,
         title: dup.title,
-        data: { slug: dup.slug, kind: dup.kind, title: dup.title, showInNav: dup.showInNav, navLabel: dup.navLabel, contentData: content?.data ?? {} },
+        data: { slug: dup.slug, kind: dup.kind, title: dup.title, showInNav: dup.showInNav, navLabel: dup.navLabel, contentData: content?.data ?? {}, articleData: article?.data ?? null },
       },
     });
-    await prisma.sitePageContent.deleteMany({ where: { id: dup.slug } });
+    await prisma.sitePageContent.deleteMany({ where: { id: { in: [dup.slug, articleRowId(dup.slug)] } } });
     await prisma.fixedPageDuplicate.delete({ where: { id: dup.id } });
     res.json({ message: 'Moved to trash' });
   } catch (error) {

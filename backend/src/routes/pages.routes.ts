@@ -121,10 +121,17 @@ router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
       return res.status(400).json({ error: `Der Slug "${slug}" ist reserviert und kann nicht verwendet werden.` });
     }
     const { title, metaDescription, headerImageUrl, status, showInNav, navLabel, body, design } = req.body;
+    const before = await prisma.page.findUnique({ where: { id: req.params.id as string }, select: { slug: true } });
     const page = await prisma.page.update({
       where: { id: req.params.id as string },
       data: { slug, title, metaDescription, headerImageUrl, status, showInNav, navLabel, body, design },
     });
+    // Its page-editor content ("article--<slug>", pageArticle.routes.ts) and
+    // that content's versions move along with a renamed URL.
+    if (before && before.slug !== page.slug) {
+      await prisma.sitePageContent.updateMany({ where: { id: `article--${before.slug}` }, data: { id: `article--${page.slug}` } });
+      await prisma.sitePageContent.updateMany({ where: { id: `versions--article--${before.slug}` }, data: { id: `versions--article--${page.slug}` } });
+    }
     await syncMenuPublishedForUrl(`/${page.slug}`, page.status !== 'draft');
     res.json(page);
   } catch (error: any) {

@@ -306,11 +306,12 @@ export const HomeContentEditor = () => {
       {dupMeta && <FixedDuplicateMetaFields meta={dupMeta} onChange={setDupMeta} />}
       {primaryMeta && <PrimaryPageSettingsFields settings={primaryMeta} onChange={setPrimaryMeta} />}
 
-      {contentId ? (
-        // A duplicate: one single free-form editor for the whole page body,
+      {joomlaTrial ? (
+        // /home-3 only: one single free-form editor for the whole page body,
         // Joomla-article style - see the HomeContentData.bodyHtml comment
-        // above for why this replaces every structured field below instead
-        // of sitting alongside them.
+        // above. Every other copy is edited with the new page editor
+        // (PageArticleEditor.tsx), so its old field editor shows the same
+        // fields as the real Startseite, filled with the copied data.
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 2 }}>Seiteninhalt</Typography>
