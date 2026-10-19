@@ -133,7 +133,11 @@ export const useEvents = () => {
           category: (e.category || 'Sonstiges') as Category,
           start: new Date(e.startDate),
           end: e.endDate ? new Date(e.endDate) : new Date(e.startDate),
-          color: e.color,
+          // Was reading e.color, a field that never existed on the Event
+          // model (only calendarBgColor does) - the admin's "Kalender
+          // Hintergrund-Farbe" setting never actually reached the public
+          // calendar, always silently falling back to the category color.
+          color: e.calendarBgColor,
           calendarTextColor: e.calendarTextColor,
           description: e.description,
           shortDescription: e.shortDescription,
