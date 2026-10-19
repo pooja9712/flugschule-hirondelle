@@ -176,5 +176,11 @@ export const FixedPageRouter = () => {
     }
   }
 
-  return <DynamicPage />;
+  // PAGE ARTICLE MODE: custom (Seiten/Unlayer) pages can be edited in the
+  // Joomla-style page editor too, keyed by their slug.
+  return (
+    <PageArticleOverride articleKey={slug as string}>
+      <DynamicPage />
+    </PageArticleOverride>
+  );
 };

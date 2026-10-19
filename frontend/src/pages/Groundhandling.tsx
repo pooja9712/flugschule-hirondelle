@@ -200,7 +200,8 @@ export const Groundhandling = ({ contentId }: { contentId?: string } = {}) => {
             />
 
             {/* Impressions Gallery */}
-            <div>
+            {/* data-live-*: the Joomla-style page editor keeps this gallery live (utils/liveBlocks.tsx) */}
+            <div data-live-block="gallery" data-live-slug="groundhandling" data-live-fallback={JSON.stringify(FALLBACK_GALLERY)}>
                <h3 className="font-luxury text-2xl text-luxury-dark mb-6 uppercase tracking-wider border-b border-gray-200 pb-4">
                  Impressionen
                </h3>

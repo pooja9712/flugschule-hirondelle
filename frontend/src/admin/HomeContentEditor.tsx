@@ -4,6 +4,7 @@ import { useNotify } from 'react-admin';
 import { type FixedDuplicateMeta, FixedDuplicateMetaFields } from './FixedDuplicateMetaFields';
 import { type PrimaryPageSettings, PrimaryPageSettingsFields } from './PrimaryPageSettingsFields';
 import { RichHtmlInput } from './RichHtmlInput';
+import { JoomlaPageActions } from './JoomlaPageActions';
 import {
   Box,
   Card,
@@ -63,6 +64,9 @@ interface HomeContentData {
   // in their place for a duplicate, same as this page's own "Seiten"/
   // DynamicPage.tsx CMS flow already does for an admin-authored page body.
   bodyHtml: string;
+  // "html" once saved from the Joomla-style editor: the public page then
+  // shows exactly bodyHtml, even when it is empty (Home.tsx).
+  bodyMode?: string;
 }
 
 const DEFAULTS: HomeContentData = {
@@ -152,6 +156,10 @@ export const HomeContentEditor = () => {
   // editing one of those instead of the real Startseite.
   const { contentId } = useParams<{ contentId?: string }>();
   const previewPath = contentId ? `/${contentId}` : '/';
+  // Joomla-style page editing (content-only canvas, Joomla action bar with
+  // Versionen) - on trial for /home-3 first, to be rolled out to the other
+  // pages once approved.
+  const joomlaTrial = contentId === 'home-3';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [content, setContent] = useState<HomeContentData>(DEFAULTS);
@@ -186,13 +194,16 @@ export const HomeContentEditor = () => {
 
   useEffect(load, [contentId]);
 
-  const handleSave = () => {
+  // Resolves to the page's slug after a successful save (it can change when
+  // the URL field was edited), or null when saving failed.
+  const handleSave = (): Promise<string | null> => {
     setSaving(true);
+    let savedSlug: string | null = contentId || 'home';
     const url = contentId ? `/api/sitepagecontent/${contentId}` : '/api/homecontent/default';
-    fetch(url, {
+    return fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(contentId ? { data: content } : content),
+      body: JSON.stringify(contentId ? { data: joomlaTrial ? { ...content, bodyMode: 'html' } : content } : content),
     })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Speichern fehlgeschlagen');
@@ -207,6 +218,7 @@ export const HomeContentEditor = () => {
           });
           const updated = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(updated.error || 'Seiten-Einstellungen konnten nicht gespeichert werden');
+          savedSlug = updated.slug;
           if (updated.slug !== contentId) navigate(`/admin/home-content/${updated.slug}`, { replace: true });
           else setDupMeta(updated);
         }
@@ -221,8 +233,14 @@ export const HomeContentEditor = () => {
           setPrimaryMeta(updated);
         }
       })
-      .then(() => notify('Startseiten-Inhalte gespeichert', { type: 'success' }))
-      .catch((err) => notify(err.message || 'Fehler beim Speichern', { type: 'error' }))
+      .then(() => {
+        notify('Startseiten-Inhalte gespeichert', { type: 'success' });
+        return savedSlug;
+      })
+      .catch((err) => {
+        notify(err.message || 'Fehler beim Speichern', { type: 'error' });
+        return null;
+      })
       .finally(() => setSaving(false));
   };
 
@@ -262,8 +280,18 @@ export const HomeContentEditor = () => {
 
   return (
     <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5">Startseite - Inhalte</Typography>
+        {joomlaTrial ? (
+          <JoomlaPageActions
+            versionsUrl={`/api/sitepagecontent/${encodeURIComponent(contentId!)}/versions`}
+            previewPath={previewPath}
+            saving={saving}
+            onSave={handleSave}
+            onRestore={(bodyHtml) => setContent((prev) => ({ ...prev, bodyHtml }))}
+            editPathFor={(slug) => `/admin/home-content/${slug}`}
+          />
+        ) : (
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button component="a" href={previewPath} target="_blank" rel="noopener noreferrer" variant="outlined" startIcon={<OpenInNewIcon />}>
             Vorschau
@@ -272,30 +300,30 @@ export const HomeContentEditor = () => {
             Speichern
           </Button>
         </Box>
+        )}
       </Box>
 
       {dupMeta && <FixedDuplicateMetaFields meta={dupMeta} onChange={setDupMeta} />}
       {primaryMeta && <PrimaryPageSettingsFields settings={primaryMeta} onChange={setPrimaryMeta} />}
 
-      {contentId ? (
-        // A duplicate: one single free-form editor for the whole page body,
+      {joomlaTrial ? (
+        // /home-3 only: one single free-form editor for the whole page body,
         // Joomla-article style - see the HomeContentData.bodyHtml comment
-        // above for why this replaces every structured field below instead
-        // of sitting alongside them.
+        // above. Every other copy is edited with the new page editor
+        // (PageArticleEditor.tsx), so its old field editor shows the same
+        // fields as the real Startseite, filled with the copied data.
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 2 }}>Seiteninhalt</Typography>
-            <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-              Alles auf dieser Seite (Kacheln, Hoch-Hinaus-Text, Team) wird hier als ein einziger, frei gestaltbarer Inhalt bearbeitet - wie ein Artikel in Joomla. Bilder über das Bild-Symbol einfügen.
-            </Typography>
             <RichHtmlInput
               label=""
               value={content.bodyHtml}
               onChange={(html) => setContent({ ...content, bodyHtml: html })}
               minRows={18}
-              helperText="Wie in Joomla: Menüleiste oben, weitere Werkzeuge über die Schaltfläche „…“. Über „HTML“ lässt sich der Quelltext direkt bearbeiten."
               bodyClass="home-body-content"
               contentMaxWidth={1200}
+              contentOnly={joomlaTrial}
+              blockVisibility={joomlaTrial}
             />
           </CardContent>
         </Card>

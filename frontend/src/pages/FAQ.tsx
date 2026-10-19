@@ -73,9 +73,12 @@ const DEFAULT_CONTENT: FaqData = {
   contactEmail: 'info@fs-hirondelle.de',
 };
 
+// data-faq-*: lets the Joomla-style page editor turn each item into an
+// editable <details> accordion (utils/liveBlocks.tsx).
 const AccordionItem = ({ item, isOpen, onToggle }: { item: FaqItem; isOpen: boolean; onToggle: () => void }) => (
-  <div className="border-b border-gray-200">
+  <div className="border-b border-gray-200" data-faq-item>
     <button
+      data-faq-question
       type="button"
       onClick={onToggle}
       className="w-full flex items-center justify-between gap-4 py-5 text-left"
@@ -85,7 +88,7 @@ const AccordionItem = ({ item, isOpen, onToggle }: { item: FaqItem; isOpen: bool
     </button>
     <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
       <div className="overflow-hidden">
-        <div className="text-gray-600 font-light leading-relaxed pb-6 pr-8 [&_a]:font-medium">
+        <div className="text-gray-600 font-light leading-relaxed pb-6 pr-8 [&_a]:font-medium" data-faq-answer>
           <SafeHtml html={item.answerHtml} />
         </div>
       </div>

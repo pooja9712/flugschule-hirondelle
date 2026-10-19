@@ -690,3 +690,26 @@ body.admin-root .RaBulkActionsToolbar-root {
     flex: 1 1 calc(58.3333% - 1rem);
   }
 }
+/* FAQ items in a page edited with the Joomla-style editor (utils/liveBlocks.tsx):
+   native <details> accordion, styled like the FAQ page's own accordion. */
+details.faq-item > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  cursor: pointer;
+}
+details.faq-item > summary::-webkit-details-marker { display: none; }
+details.faq-item > summary::after {
+  content: '';
+  width: 0.6rem;
+  height: 0.6rem;
+  flex-shrink: 0;
+  border-right: 2px solid var(--color-luxury-gold);
+  border-bottom: 2px solid var(--color-luxury-gold);
+  transform: rotate(45deg);
+  transition: transform 0.3s;
+}
+details.faq-item[open] > summary::after { transform: rotate(-135deg); }

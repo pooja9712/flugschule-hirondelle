@@ -277,7 +277,9 @@ export const EventComments = ({ eventId, pageSlug }: { eventId?: string, pageSlu
   );
 
   return (
-    <div id="comments" className="mt-12 w-full mx-auto font-luxurysans bg-white p-8 rounded-sm shadow-sm border border-gray-100">
+    // data-live-*: lets the Joomla-style page editor keep this section live
+    // (utils/liveBlocks.tsx) instead of copying it as static HTML.
+    <div id="comments" data-live-block="comments" data-live-slug={pageSlug || ''} data-live-event={eventId || ''} className="mt-12 w-full mx-auto font-luxurysans bg-white p-8 rounded-sm shadow-sm border border-gray-100">
       <h3 className="text-2xl font-luxury text-luxury-dark mb-6 flex items-center gap-3">
         <MessageSquare className="text-luxury-gold" />
         Kommentare & Bewertungen

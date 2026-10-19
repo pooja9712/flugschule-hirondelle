@@ -21,6 +21,7 @@
 // =====================================================================
 import { Router } from 'express';
 import { prisma } from '../utils/prisma';
+import { keepVersion, listVersions } from '../utils/pageVersions';
 import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -31,9 +32,12 @@ const KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,150}$/;
 interface PageArticleData {
   enabled: boolean;
   html: string;
+  // Copied from the rendered page: its sections bring their own width/
+  // spacing, so the public page renders it without the article container.
+  fullWidth?: boolean;
 }
 
-const EMPTY: PageArticleData = { enabled: false, html: '' };
+const EMPTY: PageArticleData = { enabled: false, html: '', fullWidth: false };
 
 const rowId = (key: string) => `${ID_PREFIX}${key}`;
 
@@ -52,10 +56,22 @@ router.get('/public/:key', async (req, res) => {
     const data = (row?.data || null) as PageArticleData | null;
     if (!data?.enabled) return res.status(404).json({ error: 'Not found' });
     res.set('Cache-Control', 'no-store');
-    res.json({ html: data.html || '' });
+    res.json({ html: data.html || '', fullWidth: !!data.fullWidth });
   } catch (error) {
     console.error('Error fetching public page article:', error);
     res.status(500).json({ error: 'Failed to fetch page article' });
+  }
+});
+
+// Joomla-style "Versionen": previous bodies, kept on every save.
+router.get('/:key/versions', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    const key = parseKey(req.params.key);
+    if (!key) return res.status(400).json({ error: 'Ungültige Seite' });
+    res.json(await listVersions(rowId(key)));
+  } catch (error) {
+    console.error('Error fetching page article versions:', error);
+    res.status(500).json({ error: 'Failed to fetch versions' });
   }
 });
 
@@ -78,7 +94,10 @@ router.put('/:key', authenticateJWT, authorizeAdmin, async (req, res) => {
     const data: PageArticleData = {
       enabled: !!req.body?.enabled,
       html: typeof req.body?.html === 'string' ? req.body.html : '',
+      fullWidth: !!req.body?.fullWidth,
     };
+    const existing = await prisma.sitePageContent.findUnique({ where: { id: rowId(key) } });
+    await keepVersion(rowId(key), (existing?.data as any)?.html, data.html);
     await prisma.sitePageContent.upsert({
       where: { id: rowId(key) },
       update: { data: data as any },
@@ -96,6 +115,12 @@ router.delete('/:key', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
     const key = parseKey(req.params.key);
     if (!key) return res.status(400).json({ error: 'Ungültige Seite' });
+    // Into the Papierkorb first (restored like any SitePageContent row,
+    // trash.routes.ts), so removing it can be undone.
+    const row = await prisma.sitePageContent.findUnique({ where: { id: rowId(key) } });
+    if (row) {
+      await prisma.contentTrash.create({ data: { kind: 'sitepagecontent', refId: rowId(key), title: `Seiteninhalt (Editor): ${key}`, data: { data: row.data as any } } });
+    }
     await prisma.sitePageContent.deleteMany({ where: { id: rowId(key) } });
     res.json({ ok: true });
   } catch (error) {

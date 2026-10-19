@@ -17,35 +17,36 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Banner } from '../components/common/Banner';
-import { SafeHtml } from '../components/common/SafeHtml';
+import { LiveHtml } from '../utils/liveBlocks';
 
 // Cached per page key for the session, so moving between pages doesn't
 // refetch (and briefly blank) pages already checked once.
-const cache = new Map<string, string | null>();
+interface Article { html: string; fullWidth: boolean }
+const cache = new Map<string, Article | null>();
 
 export const PageArticleOverride = ({ articleKey, children }: { articleKey: string; children: ReactNode }) => {
   const { search } = useLocation();
   const forceOriginal = new URLSearchParams(search).get('original') === '1';
-  const [fetched, setFetched] = useState<{ key: string; html: string | null } | undefined>(
-    cache.has(articleKey) ? { key: articleKey, html: cache.get(articleKey)! } : undefined,
+  const [fetched, setFetched] = useState<{ key: string; article: Article | null } | undefined>(
+    cache.has(articleKey) ? { key: articleKey, article: cache.get(articleKey)! } : undefined,
   );
 
   useEffect(() => {
     if (forceOriginal || cache.has(articleKey)) {
-      if (cache.has(articleKey)) setFetched({ key: articleKey, html: cache.get(articleKey)! });
+      if (cache.has(articleKey)) setFetched({ key: articleKey, article: cache.get(articleKey)! });
       return;
     }
     let cancelled = false;
-    const done = (html: string | null) => {
-      cache.set(articleKey, html);
-      if (!cancelled) setFetched({ key: articleKey, html });
+    const done = (article: Article | null) => {
+      cache.set(articleKey, article);
+      if (!cancelled) setFetched({ key: articleKey, article });
     };
     // Never leave a page blank if the request hangs - fall back to the
     // original design after 2s.
-    const timer = setTimeout(() => { if (!cancelled) setFetched({ key: articleKey, html: null }); }, 2000);
+    const timer = setTimeout(() => { if (!cancelled) setFetched({ key: articleKey, article: null }); }, 2000);
     fetch(`/api/page-articles/public/${encodeURIComponent(articleKey)}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => done(typeof data?.html === 'string' ? data.html : null))
+      .then((data) => done(typeof data?.html === 'string' ? { html: data.html, fullWidth: !!data.fullWidth } : null))
       .catch(() => done(null))
       .finally(() => clearTimeout(timer));
     return () => { cancelled = true; clearTimeout(timer); };
@@ -57,14 +58,25 @@ export const PageArticleOverride = ({ articleKey, children }: { articleKey: stri
   // belongs to the previous page.
   const result = fetched?.key === articleKey ? fetched : undefined;
   if (result === undefined) return null;
-  if (result.html === null) return <>{children}</>;
+  if (result.article === null) return <>{children}</>;
+
+  // Copied from the page's own design: its sections bring their own width
+  // and spacing, so no extra container (and no article text styles).
+  if (result.article.fullWidth) {
+    return (
+      <div className="w-full bg-white font-luxurysans">
+        <Banner variant={articleKey === 'home' ? 'home' : 'subpage'} />
+        <LiveHtml html={result.article.html} className="page-article-body" />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-white font-luxurysans pb-20">
-      <Banner />
+      <Banner variant={articleKey === 'home' ? 'home' : 'subpage'} />
       <section className="pt-16 md:pt-24 pb-12">
         <div className="container mx-auto px-4 lg:px-8 max-w-[1200px]">
-          <SafeHtml html={result.html} className="home-body-content page-article-body" />
+          <LiveHtml html={result.article.html} className="home-body-content page-article-body" />
         </div>
       </section>
     </div>

@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import type { MouseEvent } from 'react';
 import { useLightbox } from './Lightbox';
+import { removeUnpublishedBlocks } from '../../utils/blockVisibility';
 
 // Renders CMS-authored rich text (event/location/organizer descriptions,
 // legal pages) safely. These fields are stored as raw HTML and were
@@ -11,8 +12,9 @@ import { useLightbox } from './Lightbox';
 // <iframe>, which DOMPurify strips by default - allow it plus the specific
 // attributes those embeds use, scoped narrowly so this stays safe for the
 // other content types rendered through this same component.
-export const SafeHtml = ({ html, className }: { html: string; className?: string }) => {
-  const { open } = useLightbox();
+// The sanitizing + link fixing SafeHtml applies, as a plain function - also
+// used by utils/liveBlocks.tsx, which writes the HTML itself.
+export const sanitizeHtml = (html: string): string => {
   const clean = DOMPurify.sanitize(html || '', {
     ADD_TAGS: ['iframe'],
     ADD_ATTR: [
@@ -60,33 +62,39 @@ export const SafeHtml = ({ html, className }: { html: string; className?: string
   // Left as-is, the browser treats it as a path relative to the current SPA
   // route, and react-router's catch-all ":slug" route (App.tsx) swallows the
   // click into one of the app's own fixed pages instead of the real target.
-  const withFixedLinks = (() => {
-    const container = document.createElement('div');
-    container.innerHTML = clean;
-    container.querySelectorAll('a[href]').forEach((a) => {
-      const href = a.getAttribute('href') || '';
-      const articleMatch = /^index\.php\?.*\bid=(\d+)/i.exec(href);
-      if (articleMatch && OLD_ARTICLE_ID_TO_PATH[articleMatch[1]]) {
-        a.setAttribute('href', OLD_ARTICLE_ID_TO_PATH[articleMatch[1]]);
-      } else if (/^index\.php\b/i.test(href)) {
-        a.setAttribute('href', `https://fs-hirondelle.de/${href}`);
-      } else if (href && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(href)) {
-        a.setAttribute('href', `https://${href}`);
-      }
-      if (/^https?:\/\//i.test(a.getAttribute('href') || '')) {
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener noreferrer');
-      }
-    });
-    return container.innerHTML;
-  })();
+  const container = document.createElement('div');
+  container.innerHTML = clean;
+  // Blocks switched off or scheduled in the page editor (see blockVisibility.ts).
+  removeUnpublishedBlocks(container);
+  container.querySelectorAll('a[href]').forEach((a) => {
+    const href = a.getAttribute('href') || '';
+    const articleMatch = /^index\.php\?.*\bid=(\d+)/i.exec(href);
+    if (articleMatch && OLD_ARTICLE_ID_TO_PATH[articleMatch[1]]) {
+      a.setAttribute('href', OLD_ARTICLE_ID_TO_PATH[articleMatch[1]]);
+    } else if (/^index\.php\b/i.test(href)) {
+      a.setAttribute('href', `https://fs-hirondelle.de/${href}`);
+    } else if (href && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(href)) {
+      a.setAttribute('href', `https://${href}`);
+    }
+    if (/^https?:\/\//i.test(a.getAttribute('href') || '')) {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+  return container.innerHTML;
+};
+
+export const SafeHtml = ({ html, className }: { html: string; className?: string }) => {
+  const { open } = useLightbox();
+  const withFixedLinks = sanitizeHtml(html);
 
   // Old site's mediabox plugin opened any content image full-size on
   // click - mirrored here via event delegation (one listener for however
   // many images this content happens to contain) instead of per-image.
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'IMG') {
+    // An image inside a link (a linked card or button) follows the link.
+    if (target.tagName === 'IMG' && !target.closest('a')) {
       const img = target as HTMLImageElement;
       open(img.currentSrc || img.src, img.alt);
     }

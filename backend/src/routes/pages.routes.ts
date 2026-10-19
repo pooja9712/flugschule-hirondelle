@@ -121,10 +121,17 @@ router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
       return res.status(400).json({ error: `Der Slug "${slug}" ist reserviert und kann nicht verwendet werden.` });
     }
     const { title, metaDescription, headerImageUrl, status, showInNav, navLabel, body, design } = req.body;
+    const before = await prisma.page.findUnique({ where: { id: req.params.id as string }, select: { slug: true } });
     const page = await prisma.page.update({
       where: { id: req.params.id as string },
       data: { slug, title, metaDescription, headerImageUrl, status, showInNav, navLabel, body, design },
     });
+    // Its page-editor content ("article--<slug>", pageArticle.routes.ts) and
+    // that content's versions move along with a renamed URL.
+    if (before && before.slug !== page.slug) {
+      await prisma.sitePageContent.updateMany({ where: { id: `article--${before.slug}` }, data: { id: `article--${page.slug}` } });
+      await prisma.sitePageContent.updateMany({ where: { id: `versions--article--${before.slug}` }, data: { id: `versions--article--${page.slug}` } });
+    }
     await syncMenuPublishedForUrl(`/${page.slug}`, page.status !== 'draft');
     res.json(page);
   } catch (error: any) {
@@ -171,6 +178,16 @@ router.post('/:id/duplicate', authenticateJWT, authorizeAdmin, async (req, res) 
         navLabel: source.navLabel,
       },
     });
+    // The page-editor content ("article--<slug>", pageArticle.routes.ts) is
+    // what the page actually shows once edited there - copy it too.
+    const article = await prisma.sitePageContent.findUnique({ where: { id: `article--${source.slug}` } });
+    if (article) {
+      await prisma.sitePageContent.upsert({
+        where: { id: `article--${slug}` },
+        update: { data: article.data as any },
+        create: { id: `article--${slug}`, data: article.data as any },
+      });
+    }
     res.status(201).json(copy);
   } catch (error) {
     console.error('Error duplicating page:', error);
@@ -186,7 +203,11 @@ router.delete('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
     const page = await prisma.page.findUnique({ where: { id: req.params.id as string } });
     if (!page) return res.status(404).json({ error: 'Page not found' });
     const { id, createdAt, updatedAt, ...data } = page;
-    await prisma.contentTrash.create({ data: { kind: 'page', refId: page.id, title: page.title, data } });
+    // Its page-editor content goes to the trash with it (restored together,
+    // trash.routes.ts), so a later page with the same URL starts clean.
+    const article = await prisma.sitePageContent.findUnique({ where: { id: `article--${page.slug}` } });
+    await prisma.contentTrash.create({ data: { kind: 'page', refId: page.id, title: page.title, data: { ...data, articleData: article?.data ?? null } as any } });
+    await prisma.sitePageContent.deleteMany({ where: { id: `article--${page.slug}` } });
     await prisma.page.delete({ where: { id: req.params.id as string } });
     res.json({ message: 'Page moved to trash' });
   } catch (error) {

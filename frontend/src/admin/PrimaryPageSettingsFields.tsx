@@ -12,7 +12,8 @@ import { normalizeDuplicateSlug } from './FixedDuplicateMetaFields';
 
 export interface PrimaryPageSettings {
   title: string;
-  slug: string | null; // null for Home - its URL is never editable
+  slug: string | null; // null for Home while it stays at "/"
+  kind?: string;
   status: string;
 }
 
@@ -32,18 +33,18 @@ export const PrimaryPageSettingsFields = ({
       fullWidth={false}
       sx={{ width: 220 }}
     />
-    {settings.slug !== null && (
-      <TextField
-        label="URL"
-        value={settings.slug}
-        onChange={(e) => onChange({ ...settings, slug: e.target.value })}
-        onBlur={(e) => onChange({ ...settings, slug: normalizeDuplicateSlug(e.target.value) })}
-        helperText="Die alte URL leitet automatisch hierher weiter"
-        size="small"
-        fullWidth={false}
-        sx={{ width: 220 }}
-      />
-    )}
+    <TextField
+      label="URL"
+      value={settings.slug ?? ''}
+      onChange={(e) => onChange({ ...settings, slug: e.target.value })}
+      onBlur={(e) => onChange({ ...settings, slug: normalizeDuplicateSlug(e.target.value) })}
+      placeholder={settings.kind === 'home' ? '/' : undefined}
+      slotProps={{ inputLabel: { shrink: true } }}
+      helperText={settings.kind === 'home' ? 'Leer = Startseite unter /' : 'Die alte URL leitet automatisch hierher weiter'}
+      size="small"
+      fullWidth={false}
+      sx={{ width: 220 }}
+    />
     <TextField
       select
       label="Status"

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import EmailEditor from 'react-email-editor';
 import { useNotify } from 'react-admin';
 import { SafeHtml } from '../components/common/SafeHtml';
@@ -481,6 +481,47 @@ export const PagesManager = () => {
   useEffect(fetchFixedSettings, []);
   useEffect(fetchMenuItems, []);
 
+  // "Neue Seite": ask for title + URL, create the page and open it in the
+  // same Joomla-style page editor as every other page (PageArticleEditor),
+  // starting with empty content. The old Unlayer builder is reachable from
+  // nowhere - created pages have only the new editor.
+  const [newPageOpen, setNewPageOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [newSlugTouched, setNewSlugTouched] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const toSlug = (value: string) => value.trim().toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  const openNewPage = () => {
+    setNewTitle('');
+    setNewSlug('');
+    setNewSlugTouched(false);
+    setNewPageOpen(true);
+  };
+
+  const createNewPage = async () => {
+    const slugValue = toSlug(newSlug || newTitle);
+    if (!newTitle.trim() || !slugValue) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ title: newTitle.trim(), slug: slugValue, status: 'published', showInNav: true, body: '' }),
+      });
+      const created = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(created.error || 'Seite konnte nicht erstellt werden');
+      setNewPageOpen(false);
+      navigate(`/admin/page-article/${encodeURIComponent(created.slug)}?path=${encodeURIComponent(`/${created.slug}`)}&title=${encodeURIComponent(created.title)}&new=1`);
+    } catch (err: any) {
+      notify(err.message || 'Seite konnte nicht erstellt werden', { type: 'error' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const openCreate = () => {
     setEditing(null);
     setTitle('');
@@ -506,6 +547,21 @@ export const PagesManager = () => {
     setNavLabel(page.navLabel || '');
     setIsEditorOpen(true);
   };
+
+  // PAGE ARTICLE MODE: "/admin/pages?editPage=<id>" (the Joomla editor's
+  // "Felder-Editor (alt)" link for custom pages) opens that page's Unlayer
+  // editor directly.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editPageParam = searchParams.get('editPage');
+  useEffect(() => {
+    if (!editPageParam) return;
+    const target = pages.find((p) => p.id === editPageParam);
+    if (!target) return;
+    openEdit(target);
+    setSearchParams({}, { replace: true });
+    // openEdit only sets editor state for the page found here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editPageParam, pages]);
 
   const closeEditor = () => {
     setIsEditorOpen(false);
@@ -875,6 +931,8 @@ export const PagesManager = () => {
 
   const handleResetFixedPage = async (page: (typeof FIXED_PAGES)[number]) => {
     try {
+      // The page-editor content is reset too (it goes to the Papierkorb).
+      await fetch(`/api/page-articles/${encodeURIComponent(page.kind)}`, { method: 'DELETE', headers: authHeaders() });
       const contentRes = await fetch(page.deletePath, { method: 'DELETE', headers: authHeaders() });
       const data = await contentRes.json().catch(() => ({}));
       if (!contentRes.ok) {
@@ -1143,8 +1201,14 @@ export const PagesManager = () => {
   // visual cue (extra left padding + a small tree marker), the row itself
   // behaves identically either way.
   // PAGE ARTICLE MODE - opens the Joomla-style body editor for a page.
-  const openArticleEditor = (key: string, path: string, title: string) =>
-    navigate(`/admin/page-article/${encodeURIComponent(key)}?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}`);
+  // `fieldsPath`: the page's older field-based editor, linked from there.
+  const articleEditorUrl = (key: string, path: string, title: string, fieldsPath?: string) =>
+    `/admin/page-article/${encodeURIComponent(key)}?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}${fieldsPath ? `&fields=${encodeURIComponent(fieldsPath)}` : ''}`;
+  const openArticleEditor = (key: string, path: string, title: string, fieldsPath?: string) =>
+    navigate(articleEditorUrl(key, path, title, fieldsPath));
+  // The old field editor, with a way back to the new one (BackToArticleEditor.tsx).
+  const openFieldsEditor = (key: string, path: string, title: string, fieldsPath: string) =>
+    navigate(fieldsPath, { state: { backToArticle: articleEditorUrl(key, path, title, fieldsPath) } });
 
   const renderRow = (row: DisplayRow, indent = 0) => {
     const titleCellSx = { pl: indent ? 2 + indent * 3 : 2 };
@@ -1156,7 +1220,7 @@ export const PagesManager = () => {
       const title = live?.title || page.title;
       const previewPath = live?.slug ? `/${live.slug}` : page.previewPath;
       return (
-        <TableRow key={row.key} hover onClick={() => navigate(page.editPath)} sx={{ cursor: 'pointer' }}>
+        <TableRow key={row.key} hover onClick={() => openArticleEditor(page.kind, previewPath, title, page.editPath)} sx={{ cursor: 'pointer' }}>
           <TableCell sx={titleCellSx}>{indentMarker}{title}</TableCell>
           <TableCell>{previewPath}</TableCell>
           <TableCell>{live?.status === 'draft' ? 'Entwurf' : 'Veröffentlicht'}</TableCell>
@@ -1171,11 +1235,11 @@ export const PagesManager = () => {
             >
               <OpenInNewIcon fontSize="small" />
             </IconButton>
-            <IconButton size="small" onClick={() => navigate(page.editPath)} title="Bearbeiten">
+            {/* PAGE ARTICLE MODE - Bearbeiten opens the Joomla-style page editor; the older field editor stays reachable */}
+            <IconButton size="small" onClick={() => openArticleEditor(page.kind, previewPath, title, page.editPath)} title="Bearbeiten">
               <EditIcon fontSize="small" />
             </IconButton>
-            {/* PAGE ARTICLE MODE - remove this button to revert */}
-            <IconButton size="small" onClick={() => openArticleEditor(page.kind, previewPath, title)} title="Artikel-Inhalt (Joomla-Editor)">
+            <IconButton size="small" onClick={() => openFieldsEditor(page.kind, previewPath, title, page.editPath)} title="Felder-Editor (alt)">
               <ArticleIcon fontSize="small" />
             </IconButton>
             <IconButton size="small" onClick={() => handleDuplicateFixed(page)} title="Duplizieren (erstellt eine neue Seite mit exakt dem gleichen Design/Layout)">
@@ -1192,12 +1256,15 @@ export const PagesManager = () => {
       const { dup } = row;
       const original = FIXED_PAGES.find((p) => p.kind === dup.kind);
       const editPath = original ? `${original.editPath}/${dup.slug}` : undefined;
+      // Every copy (Startseite included) opens the Joomla-style page editor,
+      // which starts from the copy's current content - same as the originals.
+      const openEdit = () => openArticleEditor(dup.slug, `/${dup.slug}`, dup.title, editPath);
       return (
         <TableRow
           key={row.key}
           hover
-          onClick={() => editPath && navigate(editPath)}
-          sx={{ cursor: editPath ? 'pointer' : 'default' }}
+          onClick={openEdit}
+          sx={{ cursor: 'pointer' }}
         >
           <TableCell sx={titleCellSx}>{indentMarker}{dup.title}</TableCell>
           <TableCell>{`/${dup.slug}`}</TableCell>
@@ -1213,15 +1280,15 @@ export const PagesManager = () => {
             >
               <OpenInNewIcon fontSize="small" />
             </IconButton>
+            <IconButton size="small" onClick={openEdit} title="Bearbeiten">
+              <EditIcon fontSize="small" />
+            </IconButton>
+            {/* PAGE ARTICLE MODE - the older field editor stays reachable */}
             {editPath && (
-              <IconButton size="small" onClick={() => navigate(editPath)} title="Bearbeiten">
-                <EditIcon fontSize="small" />
+              <IconButton size="small" onClick={() => openFieldsEditor(dup.slug, `/${dup.slug}`, dup.title, editPath)} title="Felder-Editor (alt)">
+                <ArticleIcon fontSize="small" />
               </IconButton>
             )}
-            {/* PAGE ARTICLE MODE - remove this button to revert */}
-            <IconButton size="small" onClick={() => openArticleEditor(dup.slug, `/${dup.slug}`, dup.title)} title="Artikel-Inhalt (Joomla-Editor)">
-              <ArticleIcon fontSize="small" />
-            </IconButton>
             <IconButton size="small" onClick={() => handleDuplicateFixedDuplicate(dup)} title="Duplizieren (erstellt eine weitere Kopie mit gleichem Design/Inhalt)">
               <ContentCopyIcon fontSize="small" />
             </IconButton>
@@ -1233,8 +1300,15 @@ export const PagesManager = () => {
       );
     }
     const { page } = row;
+    // PAGE ARTICLE MODE: custom pages open the Joomla-style editor too (the
+    // "home" slug would clash with the Startseite's own key - Unlayer only).
+    const openCustom = () => {
+      if (page.slug === 'home') openEdit(page);
+      // Created pages have only the new editor - no old field/Unlayer editor.
+      else openArticleEditor(page.slug, `/${page.slug}`, page.title);
+    };
     return (
-      <TableRow key={row.key} hover onClick={() => openEdit(page)} sx={{ cursor: 'pointer' }}>
+      <TableRow key={row.key} hover onClick={openCustom} sx={{ cursor: 'pointer' }}>
         <TableCell sx={titleCellSx}>
           {indentMarker}
           {page.title}
@@ -1257,7 +1331,7 @@ export const PagesManager = () => {
           >
             <OpenInNewIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" onClick={() => openEdit(page)} title="Bearbeiten">
+          <IconButton size="small" onClick={openCustom} title="Bearbeiten">
             <EditIcon fontSize="small" />
           </IconButton>
           <IconButton size="small" onClick={() => handleDuplicate(page)} title="Duplizieren (erstellt eine Kopie mit gleichem Design/Inhalt)">
@@ -1305,9 +1379,37 @@ export const PagesManager = () => {
         <Typography variant="h5">Seiten</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button variant="outlined" startIcon={<RestoreFromTrashIcon />} onClick={() => navigate('/admin/trash')}>Papierkorb</Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Neue Seite</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openNewPage}>Neue Seite</Button>
         </Box>
       </Box>
+      <Dialog open={newPageOpen} onClose={() => !creating && setNewPageOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Neue Seite</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            label="Titel"
+            fullWidth
+            value={newTitle}
+            onChange={(e) => { setNewTitle(e.target.value); if (!newSlugTouched) setNewSlug(toSlug(e.target.value)); }}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            label="URL"
+            fullWidth
+            value={newSlug}
+            onChange={(e) => { setNewSlug(e.target.value); setNewSlugTouched(true); }}
+            onBlur={(e) => setNewSlug(toSlug(e.target.value))}
+            helperText={`Die Seite ist dann unter /${toSlug(newSlug || newTitle) || '...'} erreichbar`}
+            onKeyDown={(e) => { if (e.key === 'Enter') void createNewPage(); }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewPageOpen(false)} disabled={creating}>Abbrechen</Button>
+          <Button variant="contained" onClick={() => { void createNewPage(); }} disabled={creating || !newTitle.trim() || !toSlug(newSlug || newTitle)}>
+            Erstellen &amp; bearbeiten
+          </Button>
+        </DialogActions>
+      </Dialog>
       {sessionExpired && (
         <Alert
           severity="warning"

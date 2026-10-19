@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../utils/prisma';
+import { VERSIONS_PREFIX, keepVersion, listVersions } from '../utils/pageVersions';
 import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -1849,9 +1850,13 @@ export const DEFAULTS: Record<string, any> = {
 // legitimate as long as a row actually exists for it - DEFAULTS is only
 // ever a fallback for the original 6, never a valid answer for an id it
 // doesn't recognize.
+// Joomla-style content history ("Versionen") - see utils/pageVersions.ts.
+// Never served by the public route below.
+
 router.get('/public/:id', async (req, res) => {
   try {
     const id = String(req.params.id);
+    if (id.startsWith(VERSIONS_PREFIX)) return res.status(404).json({ error: 'Unknown page' });
     const row = await prisma.sitePageContent.findUnique({ where: { id } });
     if (row) return res.json(row.data);
     if (DEFAULTS[id]) return res.json(DEFAULTS[id]);
@@ -1866,6 +1871,15 @@ router.get('/public/:id', async (req, res) => {
 // comment above) - a FixedPageDuplicate's own admin editor GETs/PUTs its
 // content by its own slug, which only ever exists as a real row, never a
 // DEFAULTS fallback.
+router.get('/:id/versions', authenticateJWT, authorizeAdmin, async (req, res) => {
+  try {
+    res.json(await listVersions(String(req.params.id)));
+  } catch (error) {
+    console.error('Error fetching page versions:', error);
+    res.status(500).json({ error: 'Failed to fetch versions' });
+  }
+});
+
 router.get('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
   try {
     const id = String(req.params.id);
@@ -1887,6 +1901,7 @@ router.put('/:id', authenticateJWT, authorizeAdmin, async (req, res) => {
     const existing = await prisma.sitePageContent.findUnique({ where: { id } });
     if (!existing && !DEFAULTS[id]) return res.status(404).json({ error: 'Unknown page' });
     const data = req.body.data !== undefined ? req.body.data : req.body;
+    if (!id.startsWith(VERSIONS_PREFIX)) await keepVersion(id, (existing?.data as any)?.bodyHtml, data?.bodyHtml);
     const row = await prisma.sitePageContent.upsert({
       where: { id },
       update: { data },

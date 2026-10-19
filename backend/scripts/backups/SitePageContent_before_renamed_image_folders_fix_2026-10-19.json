@@ -1,0 +1,211 @@
+[
+  {
+    "id": "a-schein",
+    "data": {
+      "eyebrow": "AUSBILDUNG",
+      "heading": "A-Schein",
+      "heroImage": "/images/a-schein/hero.jpg",
+      "heroAlt": "A-Schein Höhenflugkurs",
+      "pilotHeading": "Du wirst endlich lizenzierter Pilot",
+      "pilotHtml": "Auf den <a href=\"/ausbildung/l-schein\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">Grundkurs</a> aufbauend, werden für den A-Schein die Kenntnisse vertieft. Kurvenflug, Schirmkontrolle und vielleicht schon das erste Rückwärtsaufziehen an dem Übungshang sind einige der Lerninhalte, die in diesem Kurs neben den Höhenflügen auf dem Lehrplan stehen. Mit der vorgeschriebenen Ausbildung in Theorie und Praxis machen wir aus dir einen sicheren und umsichtigen Piloten. Nach erfolgreich bestandener Theorieprüfung und Erreichen von mind. 40 Höhenflügen sowie 18.000 Höhenmetern kannst du dann auch die praktische Prüfung ablegen. Mit dem A-Schein in deinen Händen, warten die zugelassenen Gelände in ganz Deutschland und darüber hinaus von dir erflogen zu werden!",
+      "expectHeading": "Was dich erwartet beim Höhenflugkurs (A-Schein)...",
+      "expectParagraph1Html": "Für den beschränkten Luftfahrerschein (A-Schein) benötigt man mind. 40 Flüge, in denen mind. 18.000 Höhenmeter erflogen werden. Die alpinen Höhenflüge finden im Rahmen unserer Höhenflugschulungen (i. d. R. in den Alpen) statt. Weitere Flüge können auch an der <a href=\"/ausbildung/windenschein\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">Winde</a> absolviert werden (Achtung Winde: dies ist ein separater Kurs, der sich aber super mit der A-Scheinausbildung kombinieren lässt! Der <a href=\"/ausbildung/windenschein\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">Windenkurs</a> spart unterm Strich Zeit und Geld!).",
+      "expectParagraph2": "Für die Höhenflugschulung fahren wir regelmäßig nach Bassano / Italien, sowie nach Frankreich und Österreich – weitere Fluggebiete nutzen wir nach Bedarf!",
+      "expectParagraph3": "Auf dieser 1-wöchigen Höhenflugschulung (Samstag bis Samstag → es werden nur 5 Tage Urlaub benötigt) werden die notwendigen Höhenflüge gesammelt und Flugmanöver trainiert und du wirst auf die praktische Prüfung vorbereitet. Diese findet auch vor Ort statt und wird von einem Prüfer des DHV (Deutscher Hängegleiter Verband) abgenommen.",
+      "expectParagraph4": "Der A-Schein berechtigt dich dann zum alleinigen Fliegen in zugelassenen Geländen in ganz Deutschland und darüber hinaus.",
+      "courseHeading": "Der Kurs...",
+      "courseHtml": "Neue Lerninhalte wie Landeeinteilung, Vollkreis, Kurven mit unterschiedlicher Schräglage sowie Abstiegshilfen werden dem Flugschüler in diesem Ausbildungsabschnitt vermittelt. Auch die erste Thermikerfahrung sammelt ihr im Rahmen der Ausbildung zum A-Schein. Ständige Funkbegleitung versteht sich von selbst! Untermauert wird die Ausbildung mit insgesamt 20 Unterrichtsstunden Theorie (à 45 min.) in den Fächern: Meteorologie, Luftrecht, Gerätekunde, Flugtechnik und Verhalten in besonderen Fällen. Nach dem Kurs muss der Flugschüler eine offizielle Theorieprüfung in den vorher vermittelten Theoriefächern vor einem Prüfer des <a href=\"https://www.dhv.de/\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">DHV</a> abzulegen - dies kann jederzeit in der Flugschule bei Alex erfolgen.",
+      "orgHeading": "Organisatorisches...",
+      "orgHtml": "Die Termine zur Höhenflugschulung findet ihr in unserem <a href=\"/buchungskalender\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">Kalender</a>. Bitte meldet euch hierüber an. Ort und genaue Uhrzeit der Kurstermine erfahrt ihr dann wie gewohnt vorab per Schulungs-Newsletter. Die Ausbildung zum Höhenflugausweis erfolgt wie gewohnt für jeden Piloten zeitoffen.",
+      "equipmentHeading": "Die erste eigene Ausrüstung",
+      "equipmentParagraph1": "Mit der Ausbildung zum selbständigen Piloten kommt auch eine eigene Ausrüstung ins Spiel. Wie bei vielen anderen Sportarten ist auch beim Gleitschirmfliegen die Ausrüstung entscheidend. Doch wer die Wahl hat, hat die Qual! Man muss sich in erster Linie damit auseinandersetzen, welche Ausrüstung für einen selbst geeignet ist. Wir von der Flugschule Hirondelle setzen genau an dieser Stelle an und beraten euch auf der Suche nach dem passenden Equipment. Die von uns getroffene Auswahl spiegelt einen Querschnitt des Marktes wieder und bedient nach unserer Erfahrung nahezu alle Ansprüche und Wünsche – die Produkte der beiden Phi, Niviuk, Independence und Advance bieten für alle Zielgruppen entsprechende Ausrüstungen. Mit unserer langjährigen Auseinandersetzung mit Flugeigenschaften, Sicherheit, Qualität, Service, Handling und technischem Fortschritt unterstützen wir euch so optimal bei der Entscheidung zu eurer Neuinvestition.",
+      "equipmentParagraph2": "Wollt/könnt ihr euch noch nicht gleich festlegen, besteht die Möglichkeit, die Ausbildung zum A-Schein mit einer Leihausrüstung der Flugschule zu absolvieren.",
+      "equipmentParagraph3": "Oder ihr bringt eine eigene (fremdgekaufte) Ausrüstung mit, hier greift ein Aufschlag auf den Kurspreis der Höhenflugschulung in Höhe von 350,00 € pro Kurs / Woche.",
+      "priceRows": [
+        {
+          "title": "A-Scheinkurs",
+          "description": "Praxisausbildung im Rahmen der Schulungswoche Höhenflugschulung 1 (790,- €) sowie A-Schein-Theorie (200,- €)",
+          "price": "990,- €"
+        },
+        {
+          "title": "Kombikurs:",
+          "description": "Grundkurs & A-Scheinkurs Woche 1",
+          "price": "1.590,- €"
+        },
+        {
+          "title": "",
+          "description": "Ratenzahlung Kombikurs [ 4 Raten à 430,- € ]",
+          "price": "1.720,- €"
+        },
+        {
+          "title": "Kombikurs Kompakt:",
+          "description": "Grundkurs & Winde & A-Scheinkurs Woche 1",
+          "price": "1.990,- €"
+        },
+        {
+          "title": "",
+          "description": "Ratenzahlung Kombikurs Kompakt [ 4 Raten à 530,- € ]",
+          "price": "2.120,- €"
+        }
+      ],
+      "priceNote": "alle Kursgebühren mit bei uns gekaufter Ausrüstung / Leihausrüstung siehe Zusatzkosten",
+      "extraCostRows": [
+        {
+          "label": "eigene Ausrüstung",
+          "price": "Preise auf Anfrage"
+        },
+        {
+          "label": "optional Leihausrüstung [pauschal pro Kurswoche]",
+          "price": "350,- €"
+        },
+        {
+          "label": "Aufschlag bei fremdgekaufter Ausrüstung",
+          "price": "350,- €"
+        },
+        {
+          "label": "zusätzliche Teilnahme an weiteren Höhenflugschulungswochen",
+          "price": "790,- €"
+        },
+        {
+          "label": "ggf. Auffahrten zum Startplatz [ pro Fahrt ] Bus | Seilbahn (Kosten des Betreibers vor Ort)",
+          "price": "10,- € | - €"
+        }
+      ],
+      "gutscheinHeading": "A-Schein Verschenken",
+      "gutscheinDescription": "Der A-Schein ist auch als Geschenk-Gutschein möglich",
+      "leistungen": [
+        "Theorie- und Praxisausbildung durch zertifizierte Fluglehrer",
+        "Organisation der Reise für die Schulungswoche Höhenflugschulung",
+        "Funkausrüstung und -betreuung",
+        "Haftpflichtversicherung bei Leihausrüstung"
+      ],
+      "extraCostsHeading": "Zusatzkosten können entstehen für:",
+      "ausruestungLabel": "Ausrüstung",
+      "ausruestungSubItems": [
+        "neue / gebrauchte Ausrüstung, Preise auf Anfrage",
+        "Leihausrüstung über die Flugschule (350,- € / Kurswoche)",
+        "Aufschlag auf den Kurspreis bei fremdgekaufter Ausrüstung (350,- €)"
+      ],
+      "extraCostsItemsHtml": [
+        "Optional Windenkurs zur Vervollständigung der 40 benötigten Flüge",
+        "Optional zusätzliche Teilnahme an weiteren Höhenflugschulungswochen (790,- € / Woche)",
+        "E-Learning Prüffragen <a href=\"https://shop.dhv.de/collections/prufungsfragen\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">Gleitschirm-A-Schein</a> vom DHV",
+        "<a href=\"#\" class=\"text-[#428bca] hover:text-[#2a6496] hover:underline font-medium\">Prüfungsgebühren ab 03.04.2023</a> DHV"
+      ],
+      "checklist": [
+        "Lust aufs Fliegen",
+        "Mindestalter: 14 Jahre (mit Einverständniserklärung der Erziehungsberechtigten!)",
+        "Überknöchelhohe Schuhe, wir empfehlen spezielle Flugschuhe oder zumindest Wanderschuhe",
+        "Outdoor-Bekleidung, je nach Wetter Wechselkleidung",
+        "Ausreichend Getränke und Verpflegung (Fliegen macht hungrig!!!)",
+        "Sonnencreme",
+        "Ausführliche Checkliste für die Höhenflugschulung erhaltet ihr je Reisetermin"
+      ]
+    }
+  },
+  {
+    "id": "ausbildung",
+    "data": {
+      "heroQuote": "Die Flugschule Hirondelle bietet euch eine qualifizierte, sichere und vielseitige Ausbildung.",
+      "introQuote": "Wir begleiten euch von den ersten Hüpfern bis zu euren ersten Strecken- und Thermikflügen hier im Odenwald, in der Pfalz, im Kraichtal, im Nahetal und überall sonst auf der Welt.",
+      "introHtml": "Im Nachfolgenden sind die Ausbildungswege in der Flugschule Hirondelle vom <a href=\"/ausbildung/schnupperkurs\">Schnupper-/Einsteigerkurs</a> über den <a href=\"/ausbildung/l-schein\">L-Schein</a> und die <a href=\"/ausbildung/a-schein\">Höhenflugschulung (A-Schein)</a> bis zum <a href=\"/ausbildung/b-schein\">unbeschränkten Luftfahrerschein (B-Schein)</a> aufgelistet, hier gelangt ihr zur <a href=\"/ausbildung/ausbildungskonzept\">Gesamtübersicht</a>.",
+      "priceRows": [
+        {
+          "name": "Schnupper-/Einsteigerkurs",
+          "duration": "1 – 2 Tage",
+          "content": "Ausrüstung kennen lernen, die ersten Flüge",
+          "price": "ab 149,- €",
+          "link": "/ausbildung/schnupperkurs",
+          "bgColor": "#80c533"
+        },
+        {
+          "name": "L-Schein",
+          "duration": "3 – 4 Tage",
+          "content": "15 Flüge am Grundkurs-Übungshang",
+          "price": "620,- €",
+          "link": "/ausbildung/l-schein",
+          "bgColor": "#34963b"
+        },
+        {
+          "name": "Windenschein",
+          "duration": "3 Tage",
+          "content": "20 Flüge an der Winde",
+          "price": "450,- €",
+          "link": "/ausbildung/windenschein",
+          "bgColor": "#fff600"
+        },
+        {
+          "name": "A-Schein",
+          "duration": "mind. 1 Woche",
+          "content": "40 Höhenflüge",
+          "price": "ab 990,- €",
+          "link": "/ausbildung/a-schein",
+          "bgColor": "#ffd700"
+        },
+        {
+          "name": "B-Schein",
+          "duration": "mind. 1 Woche",
+          "content": "20 Höhenflüge",
+          "price": "ab 990,- €",
+          "link": "/ausbildung/b-schein",
+          "bgColor": "#e58e26"
+        },
+        {
+          "name": "Tandemschein",
+          "duration": "mind. 1 Woche",
+          "content": "40 Höhenflüge mit einem Passagier",
+          "price": "ab 790,- €",
+          "link": "/ausbildung/tandemschein",
+          "bgColor": "#c4c5ca"
+        }
+      ],
+      "graphicImage": "/images/inhalte/ausbildungswege.png",
+      "graphicCaption": "hm = ca. Höhenmeter-Differenz zwischen Start- und Landeplatz",
+      "graphicButtonLink": "/ausbildung/ausbildungskonzept",
+      "categories": [
+        {
+          "heading": "Schnupper-/Einsteigerkurs",
+          "subheading": "Der Anfang einer neuen Leidenschaft....",
+          "description": "Am Schnuppertag / Einsteigerkurs lernst du die Grundzüge des Gleitschirmfliegens kennen. Anfängliche Aufzieh- und Laufübungen bereiten dich auf deine ersten Flüge vor: Kappe auslegen, Leinen sortieren, Eintrittsöffnungen kontrollieren, damit der Gleitschirm anschließend richtig über euch steigt. Gurtzeug anlegen, Startcheck und los geht's zum ersten Versuch.",
+          "image": "/images/1-schnuppern/itemimg-schnuppern.jpg",
+          "link": "/ausbildung/schnupperkurs"
+        },
+        {
+          "heading": "L-Schein",
+          "subheading": "Du legst den Grundstein...",
+          "description": "Aufbauend auf den Schnupperkurs werden im Grundkurs die fehlenden Flüge zur Erlangung des L-Scheins absolviert. Ziel des Kurses ist es, mindestens 15 Flüge am Hang oder an der Winde zu absolvieren, bei denen die Höhendifferenz schon bis zu 200 Meter betragen kann. Kurvenflug und Schirmkontrolle sind einige der Lerninhalte, die in diesem Kurs auf dem Lehrplan stehen.",
+          "image": "/images/1-grundkurs/itemimg-grundkurs.jpg",
+          "link": "/ausbildung/l-schein"
+        },
+        {
+          "heading": "A-Schein",
+          "subheading": "Was dich erwartet beim Höhenflugkurs...",
+          "description": "Aufbauend auf dem Grundkurs, werden beim Höhenflugkurs die ersten 15 Flüge für den beschränkten Luftfahrerschein (A-Schein) durchgeführt. Das Ziel des Höhenflugkurses ist der Höhenflugausweis.",
+          "image": "/images/a-schein/hero.jpg",
+          "link": "/ausbildung/a-schein"
+        },
+        {
+          "heading": "B-Schein",
+          "subheading": "Auf Strecke mit dem unbeschränkten Luftfahrerschein...",
+          "description": "Das Gleitpotential des Gleitschirms ausreizen, die Thermik ausfliegen und dann auf Strecke gehen. Von Aufwind zu Aufwind gleiten und die Landschaft aus der Vogelperspektive genießen, das ist der Traum vieler Flieger.",
+          "image": "/images/b-schein/hero.jpg",
+          "link": "/ausbildung/b-schein"
+        },
+        {
+          "heading": "Windenschein",
+          "subheading": "Windenschlepp mit dem Gleitschirm...",
+          "description": "Das Schleppen an der Winde ist eine ideale Möglichkeit, auch im Flachland mit dem Gleitschirm in die Luft zu kommen. Der Windenschein ist die ideale Ergänzung zum A-Scheinkurs da ihr hier schnell einen Großteil der nötigen Flüge für die A-Scheinprüfung sammeln könnt.",
+          "image": "/images/windenschein/hero.jpg",
+          "link": "/ausbildung/windenschein"
+        },
+        {
+          "heading": "Tandemschein",
+          "subheading": "Zusammen mit Freunden zum Fliegen gehen.",
+          "description": "Zum Fliegen gehen und die Leidenschaft mit Freunden teilen? Mit dem Tandemschein kein Problem! Die Freiheit und die Eindrücke in der Luft mit jemanden teilen zu können ist ein fantastisches Erlebnis sowohl für den Piloten auch für den Passagier. Einfach ein Traum.",
+          "image": "/images/tandemschein/hero.jpg",
+          "link": "/ausbildung/tandemschein"
+        }
+      ]
+    }
+  }
+]

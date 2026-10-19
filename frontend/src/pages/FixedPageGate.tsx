@@ -21,7 +21,7 @@ interface PageSettings {
 //   hardcoded URL to the new one - which resolves via FixedPageRouter.tsx's
 //   ":slug" catch-all, the same mechanism a "Seiten > Duplizieren" copy uses.
 // Fails open (renders the real page) on a slow/failed settings fetch or a
-// missing/null `defaultSlug` (home, which never redirects) - a page should
+// renamed slug only - a page should
 // never go dark just because this one extra request didn't come back yet.
 export const FixedPageGate = ({
   kind,
@@ -79,7 +79,8 @@ export const FixedPageGate = ({
     );
   }
 
-  if (defaultSlug !== null && settings.slug && settings.slug !== defaultSlug) {
+  // Home (defaultSlug null) redirects "/" once it was given a URL of its own.
+  if (settings.slug && settings.slug !== defaultSlug) {
     return <Navigate to={`/${settings.slug}`} replace />;
   }
 

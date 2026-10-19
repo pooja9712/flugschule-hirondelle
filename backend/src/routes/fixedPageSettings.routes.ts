@@ -257,12 +257,11 @@ router.put('/:kind', authenticateJWT, authorizeAdmin, async (req, res) => {
     const title = String(req.body.title ?? existing.title).trim() || KIND_LABELS[kind];
     const status = req.body.status === 'draft' ? 'draft' : 'published';
 
-    let slug = existing.slug;
-    if (DEFAULT_SLUGS[kind] !== null) {
-      slug = normalizeSlug(req.body.slug ?? existing.slug ?? '') || DEFAULT_SLUGS[kind];
-      if (slug !== existing.slug && (await slugTaken(slug as string, kind))) {
-        return res.status(400).json({ error: `Der Slug "${slug}" wird bereits verwendet.` });
-      }
+    // Home has no default slug: empty keeps it at "/", a slug moves it there
+    // ("/" then redirects to it, FixedPageGate.tsx) like any other rename.
+    const slug = normalizeSlug(req.body.slug ?? existing.slug ?? '') || DEFAULT_SLUGS[kind];
+    if (slug && slug !== existing.slug && (await slugTaken(slug, kind))) {
+      return res.status(400).json({ error: `Der Slug "${slug}" wird bereits verwendet.` });
     }
 
     const updated = await prisma.fixedPageSettings.update({
