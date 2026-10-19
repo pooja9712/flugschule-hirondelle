@@ -895,6 +895,24 @@ async function createBookingAtomic(params: {
   if (event.registrationDeadline && new Date() > new Date(event.registrationDeadline)) {
     throw new BookingRequestError(400, 'Registration deadline has passed');
   }
+  // Old's real event.nrbooked==0 ('none' Buchungs-Typ) - online booking is
+  // entirely off for this event. The UI already hides the booking button
+  // for this, but the route itself has to refuse it too (a client calling
+  // this endpoint directly bypasses whatever the UI does or doesn't show).
+  if (event.bookingType === 'none') {
+    throw new BookingRequestError(400, 'Diese Veranstaltung kann nicht online gebucht werden.');
+  }
+  // Old's real nrbooked (admin label "Max. buchbare Plätze") caps how many
+  // seats ONE booking can request at all (layouts/fees/feequantity.php:24's
+  // dropdown-build loop) - only enforced when an admin actually set it, so
+  // events that never had this touched aren't newly capped at some
+  // arbitrary number.
+  if (event.maxBookablePerPerson && items && items.length > 0) {
+    const requestedTotal = items.reduce((sum, i) => sum + Number(i.quantity), 0);
+    if (requestedTotal > event.maxBookablePerPerson) {
+      throw new BookingRequestError(400, `Maximal ${event.maxBookablePerPerson} Plätze pro Buchung`);
+    }
+  }
 
   // Reject the whole request up front if any item has a non-positive/non-
   // integer quantity (a negative value would otherwise drive the price

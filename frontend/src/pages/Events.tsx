@@ -469,7 +469,12 @@ export const Events = () => {
                 // has passed too, which is what registrationClosed already
                 // covers - isPastEvent was wrongly used here before).
                 const isOverbooked = isFull && event.onExceed === 'stop';
-                const isBookable = !event.cancelled && !registrationClosed && !isOverbooked;
+                // Old's real event.nrbooked==0 ('none' here) - the booking
+                // button/seat-count line are replaced by a plain "cannot be
+                // booked online" message (eventlist/tmpl/
+                // modern_eventlist.php:207-213), same as the detail page.
+                const cannotBookOnline = event.bookingType === 'none';
+                const isBookable = !event.cancelled && !registrationClosed && !isOverbooked && !cannotBookOnline;
                 const trafficLight: 'green' | 'yellow' | 'red' | 'cancelled' | 'unlimited' =
                   event.cancelled ? 'cancelled'
                   : totalCapacity <= 0 ? 'unlimited'
@@ -624,6 +629,10 @@ export const Events = () => {
                             overbooked warning spans (bootstrap3.php:442-459) -
                             shown directly, not hidden behind any click. */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600 mb-2">
+                          {cannotBookOnline ? (
+                            <span className="text-gray-600 font-medium">Die Veranstaltung kann nicht online gebucht werden.</span>
+                          ) : (
+                          <>
                           <span className="flex items-center gap-1.5">
                             <div className={`w-3 h-3 rounded-full ${
                               trafficLight === 'cancelled' ? 'bg-sky-500'
@@ -635,6 +644,8 @@ export const Events = () => {
                           </span>
                           {totalCapacity > 0 && (
                             <span>Gebucht: {totalBooked} | Freie Plätze: {freiePlaetzeRaw}</span>
+                          )}
+                          </>
                           )}
                           {event.cancelled && (
                             <span className="inline-flex items-center gap-1 text-red-700 font-medium">

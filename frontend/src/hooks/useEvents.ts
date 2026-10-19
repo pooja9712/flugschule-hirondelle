@@ -88,6 +88,20 @@ export interface CalendarEvent {
   seriesId?: string;
   cancelled?: boolean;
   onExceed?: string; // 'waitlist' | 'stop' - old: stopbooking (0/2 = waitlist, 1 = stop)
+  // Old's real Buchungs-Typ (event.nrbooked==0 -> 'none' in old) - was only
+  // ever saved by the admin form, never read anywhere on the public site.
+  // Old's real "none": event list/detail both hide the booking UI and the
+  // seat-count info, showing "Die Veranstaltung kann nicht online gebucht
+  // werden." instead (eventlist/tmpl/modern_eventlist.php:207-213,
+  // event/tmpl/modern.php:227).
+  bookingType?: 'limited' | 'unlimited' | 'none';
+  // Old's real nrbooked (admin label "Max. buchbare Plätze") - caps how
+  // many seats a single booking can request at once
+  // (layouts/fees/feequantity.php:24's quantity-dropdown build loop) - a
+  // genuinely different, event-level column from the per-booking
+  // "how many seats did this one booking reserve" nrbooked that shares the
+  // same name on #__matukio_bookings. Was only ever saved, never enforced.
+  maxBookablePerPerson?: number;
   allDay?: boolean;
   showStartTime?: boolean;
   showEndTime?: boolean;
@@ -158,6 +172,8 @@ export const useEvents = () => {
           seriesId: e.seriesId,
           cancelled: e.cancelled,
           onExceed: e.onExceed,
+          bookingType: e.bookingType,
+          maxBookablePerPerson: e.maxBookablePerPerson,
           allDay: e.allDay,
           showStartTime: e.showStartTime,
           showEndTime: e.showEndTime,

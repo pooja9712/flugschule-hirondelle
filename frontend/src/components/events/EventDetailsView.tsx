@@ -225,6 +225,15 @@ export const EventDetailsView: React.FC<EventDetailsViewProps> = ({ event, addit
                   <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                   <span className="font-semibold">Diese Veranstaltung ist ausgebucht - eine Warteliste wird nicht angeboten.</span>
                 </div>
+              ) : event.bookingType === 'none' ? (
+                // Old's real event.nrbooked==0 state - the booking widget is
+                // replaced entirely by this message, same text as old's
+                // COM_MATUKIO_CANNOT_BOOK_ONLINE (eventlist/tmpl/
+                // modern_eventlist.php:207-213).
+                <div className="flex items-start gap-3 text-gray-600">
+                  <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span className="font-semibold">Die Veranstaltung kann nicht online gebucht werden.</span>
+                </div>
               ) : (
                 <div className="flex flex-col gap-6">
                   {event.tickets && event.tickets.length > 0 ? (
@@ -245,12 +254,19 @@ export const EventDetailsView: React.FC<EventDetailsViewProps> = ({ event, addit
                               </span>
                             </div>
                           </div>
-                          <select 
+                          <select
                             value={ticketQuantities[ticket.id] || 0}
                             onChange={(e) => handleQuantityChange(ticket.id, parseInt(e.target.value))}
                             className="w-20 p-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-1 focus:ring-luxury-gold bg-white"
                           >
-                            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                            {/* Old's real nrbooked ("Max. buchbare Plätze") caps
+                                how many seats one booking can request at all
+                                (layouts/fees/feequantity.php:24's own dropdown-
+                                build loop) - only enforced when an admin has
+                                actually set it, so events migrated/created
+                                without ever touching this field aren't newly
+                                capped at some arbitrary number. */}
+                            {Array.from({ length: (event.maxBookablePerPerson || 10) + 1 }, (_, n) => n).map(n => (
                               <option key={n} value={n}>{n}</option>
                             ))}
                           </select>
@@ -340,7 +356,12 @@ export const EventDetailsView: React.FC<EventDetailsViewProps> = ({ event, addit
                       {event.cancelled ? <span className="text-red-700 font-semibold">Storniert</span> : isPastEvent ? 'Bereits stattgefunden' : isPastDeadline ? 'Anmeldeschluss vorbei' : isBookingClosed ? <span className="text-red-700 font-semibold">Ausgebucht</span> : isFullyBooked ? <span className="text-[#53a8c7] font-semibold">Ausgebucht (Warteliste)</span> : 'Anmeldung offen'}
                     </td>
                   </tr>
-                  {freiePlaetze !== null && (
+                  {/* Old's real condition (event/tmpl/modern.php:227) hides this
+                      row for 'none' AND 'unlimited' too, not just when no cap
+                      is set - undefined bookingType (old data, never set)
+                      still counts as 'limited', matching the admin form's own
+                      defaultValue="limited". */}
+                  {freiePlaetze !== null && event.bookingType !== 'none' && event.bookingType !== 'unlimited' && (
                     <tr className="border-b border-gray-100">
                       <td className="py-3 px-5 font-semibold text-gray-500 w-1/3">Freie Plätze</td>
                       <td className="py-3 px-5 text-gray-700">
