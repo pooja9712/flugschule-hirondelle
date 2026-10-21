@@ -575,8 +575,29 @@ export const BookingList = () => (
                     <DateField source="createdAt" label="Buchungsdatum" showTime sx={{ whiteSpace: 'nowrap' }} />
                     <NumberField source="bookedSeats" label="Plätze" sortable={false} />
                     <PaidToggle source="paid" label="Bezahlt" />
+                    {/* Old's real COM_MATUKIO_RATING/COM_MATUKIO_COMMENT columns
+                        (administrator/.../bookings/tmpl/default.php) - a customer's
+                        post-event rating (1-6, RatingPage.tsx/bookings.routes.ts's
+                        /:id/rate, same unguessable-booking-id-as-token link old's
+                        uuid did) and its accompanying free-text comment. The data
+                        model/API/public page were already built; this list just
+                        never surfaced them as columns. */}
+                    <FunctionField
+                        label="Bewertung"
+                        sortable={false}
+                        render={(r: any) => r.rating == null
+                            ? <span style={{ color: '#bbb' }}>–</span>
+                            : <span title={`${r.rating}/6`}>{'★'.repeat(r.rating)}{'☆'.repeat(Math.max(0, 6 - r.rating))}</span>}
+                    />
                     <BooleanField source="certificated" label="Zertifikat" />
                     <FunctionField label="Rechnung" sortable={false} render={(r: any) => <InvoiceCell record={r} />} />
+                    <FunctionField
+                        label="Kommentar"
+                        sortable={false}
+                        render={(r: any) => r.ratingComment
+                            ? <span title={r.ratingComment} style={{ display: 'inline-block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.ratingComment}</span>
+                            : <span style={{ color: '#bbb' }}>–</span>}
+                    />
                     <StatusChip source="status" label="Status" />
                     <NumberField source="totalPrice" label="Gesamtpreis (€)" options={{ style: 'currency', currency: 'EUR' }} sx={{ whiteSpace: 'nowrap' }} />
                     <ShowButton />
