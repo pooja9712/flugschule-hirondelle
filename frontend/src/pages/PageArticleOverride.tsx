@@ -62,10 +62,18 @@ export const PageArticleOverride = ({ articleKey, children }: { articleKey: stri
 
   // Copied from the page's own design: its sections bring their own width
   // and spacing, so no extra container (and no article text styles).
+  // `position={articleKey}` (not just `variant`) so this page's own
+  // banner slot (Admin > Werbebanner > "Bestimmte Seite auswählen") is
+  // still picked up once Artikel-Modus is on - this used to rely on
+  // BannerPositionContext for that, which only FixedPageGate.tsx's 6
+  // hardcoded-route pages provide; a custom Seiten page (routed via
+  // FixedPageRouter.tsx straight into this component, no Provider) always
+  // silently fell back to the shared "Andere Seiten" banner instead,
+  // exactly as if its own slot had never been configured.
   if (result.article.fullWidth) {
     return (
       <div className="w-full bg-white font-luxurysans">
-        <Banner variant={articleKey === 'home' ? 'home' : 'subpage'} />
+        <Banner variant={articleKey === 'home' ? 'home' : 'subpage'} position={articleKey} />
         <LiveHtml html={result.article.html} className="page-article-body" />
       </div>
     );
@@ -73,7 +81,7 @@ export const PageArticleOverride = ({ articleKey, children }: { articleKey: stri
 
   return (
     <div className="w-full bg-white font-luxurysans pb-20">
-      <Banner variant={articleKey === 'home' ? 'home' : 'subpage'} />
+      <Banner variant={articleKey === 'home' ? 'home' : 'subpage'} position={articleKey} />
       <section className="pt-16 md:pt-24 pb-12">
         <div className="container mx-auto px-4 lg:px-8 max-w-[1200px]">
           <LiveHtml html={result.article.html} className="home-body-content page-article-body" />
