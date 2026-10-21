@@ -277,6 +277,17 @@ export const RichHtmlInput = ({
               content_style: plain
                 ? CONTENT_ONLY_CSS + ELEMENT_CLIPBOARD_CSS + LIVE_BLOCK_EDITOR_CSS
                 : siteStyles.inline +
+                  // index.css's own `html{overflow-x:hidden}` (its one and
+                  // only horizontal-clipping boundary for the real site) is
+                  // part of siteStyles.inline above, loaded here so the
+                  // editor previews content exactly as it looks live - but
+                  // inside this iframe it silently clipped anything wider
+                  // than the canvas (a wide table's price column, etc.) with
+                  // no scrollbar to reach it. Overridden back to scrollable
+                  // here only, same `!important` pattern index.css itself
+                  // uses for its own scroll-boundary exceptions - doesn't
+                  // touch the real site's own overflow behavior at all.
+                  `\nhtml,body{overflow-x:auto !important;}\n` +
                   `\nbody{margin:0 auto;padding:24px;background:#fff;${contentMaxWidth ? `max-width:${contentMaxWidth}px;` : ''}}\n` +
                   ELEMENT_CLIPBOARD_CSS + LIVE_BLOCK_EDITOR_CSS,
               setup: (editor) => {
