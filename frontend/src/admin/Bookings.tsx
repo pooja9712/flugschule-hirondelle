@@ -599,7 +599,6 @@ export const BookingList = () => (
                             : <span style={{ color: '#bbb' }}>–</span>}
                     />
                     <StatusChip source="status" label="Status" />
-                    <NumberField source="totalPrice" label="Gesamtpreis (€)" options={{ style: 'currency', currency: 'EUR' }} sx={{ whiteSpace: 'nowrap' }} />
                     <ShowButton />
                     <TextField source="shortId" label="ID" sortBy="id" sx={{ display: 'inline-block', maxWidth: 80, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title="ID" />
                 </Datagrid>
