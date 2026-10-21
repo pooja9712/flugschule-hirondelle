@@ -303,18 +303,28 @@ export const RichHtmlInput = ({
                   // The overflow-x:auto fixes above (here, plus the ones on
                   // .tox-edit-area/.tox-edit-area__iframe in the Box sx below,
                   // plus removing the iframe's own scrolling="no" attribute
-                  // in setup()) still didn't make old migrated content (a
-                  // fixed-width table wider than the canvas) reachable - it
-                  // was being clipped AND unreachable by scroll regardless.
-                  // Forcing it to never be wider than the canvas in the
-                  // first place sidesteps whatever in TinyMCE's own iframe
-                  // scrolling isn't cooperating, instead of continuing to
-                  // fight it - this is editor-only CSS (content_style),
-                  // doesn't touch how the content actually looks once saved
-                  // and rendered on the real site.
-                  `\ntable{max-width:100% !important;table-layout:fixed !important;}\n` +
+                  // in setup()) still didn't make old migrated content
+                  // reachable - it was being clipped AND unreachable by
+                  // scroll regardless. A narrower follow-up that only capped
+                  // <table>/<img> didn't help either, because the actual
+                  // offending markup for a page like 2-Jahres-Check isn't a
+                  // <table> at all - it's a plain `flex justify-between` row
+                  // (e.g. ZweiJahresCheck.tsx's price card) that only ever
+                  // gets its narrow column width from the live page's own
+                  // `lg:grid-cols-12`/`lg:col-span-5` wrapper. The importer
+                  // (importRenderedPage() above) copies that row's HTML
+                  // as-is, but without the live page's full grid context
+                  // around it the row is free to stretch to the editor
+                  // canvas's own (unrelated, often wider) body width.
+                  // Capping every element to never exceed its own parent's
+                  // width - not just tables/images - closes that off at the
+                  // source for ANY imported layout, not just this one page.
+                  `\n*,*::before,*::after{box-sizing:border-box !important;}\n` +
+                  `\nbody{max-width:100% !important;overflow-wrap:break-word;word-break:break-word;}\n` +
+                  `\nbody *{max-width:100% !important;}\n` +
+                  `\ntable{table-layout:fixed !important;width:100% !important;}\n` +
                   `\ntable td,table th{word-break:break-word;overflow-wrap:break-word;}\n` +
-                  `\nimg{max-width:100% !important;height:auto;}\n` +
+                  `\nimg,video,iframe{height:auto;}\n` +
                   ELEMENT_CLIPBOARD_CSS + LIVE_BLOCK_EDITOR_CSS,
               setup: (editor) => {
                 // Copy/cut/paste whole elements (boxes, images, text), plus
