@@ -300,6 +300,21 @@ export const RichHtmlInput = ({
                   // touch the real site's own overflow behavior at all.
                   `\nhtml,body{overflow-x:auto !important;}\n` +
                   `\nbody{margin:0 auto;padding:24px;background:#fff;${contentMaxWidth ? `max-width:${contentMaxWidth}px;` : ''}}\n` +
+                  // The overflow-x:auto fixes above (here, plus the ones on
+                  // .tox-edit-area/.tox-edit-area__iframe in the Box sx below,
+                  // plus removing the iframe's own scrolling="no" attribute
+                  // in setup()) still didn't make old migrated content (a
+                  // fixed-width table wider than the canvas) reachable - it
+                  // was being clipped AND unreachable by scroll regardless.
+                  // Forcing it to never be wider than the canvas in the
+                  // first place sidesteps whatever in TinyMCE's own iframe
+                  // scrolling isn't cooperating, instead of continuing to
+                  // fight it - this is editor-only CSS (content_style),
+                  // doesn't touch how the content actually looks once saved
+                  // and rendered on the real site.
+                  `\ntable{max-width:100% !important;table-layout:fixed !important;}\n` +
+                  `\ntable td,table th{word-break:break-word;overflow-wrap:break-word;}\n` +
+                  `\nimg{max-width:100% !important;height:auto;}\n` +
                   ELEMENT_CLIPBOARD_CSS + LIVE_BLOCK_EDITOR_CSS,
               setup: (editor) => {
                 // Copy/cut/paste whole elements (boxes, images, text), plus
