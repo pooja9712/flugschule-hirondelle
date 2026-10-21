@@ -10,12 +10,19 @@ import {
   Switch,
   Tooltip,
   Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
 import CloseIcon from '@mui/icons-material/Close';
 import ImageIcon from '@mui/icons-material/Image';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import { useNotify } from 'react-admin';
 import { FIXED_PAGE_KINDS } from '../data/fixedPageKinds';
 
@@ -31,6 +38,13 @@ import { FIXED_PAGE_KINDS } from '../data/fixedPageKinds';
 // the existing /api/banners REST routes (still one row per image; there's
 // no single JSON-array field here to bind a form to, so this talks to the
 // API directly instead of going through react-admin's data provider).
+//
+// On top of those 2 fixed slots: named banners the admin creates
+// independently ("+ Neues Banner erstellen") and assigns to one or several
+// pages at once (BannerGroup/BannerPageLink, see schema.prisma and
+// bannerGroups.routes.ts) - replaces the earlier "pick a page first, then
+// its banner" flow, which required a page to exist before a banner could
+// be made for it and never let one banner cover more than one page.
 interface AdBannerRow {
   id: string;
   title: string;
@@ -41,18 +55,25 @@ interface AdBannerRow {
   order: number;
 }
 
-const BANNER_GROUPS = [
-  {
-    id: 'home',
+interface BannerGroupRow {
+  id: string;
+  name: string;
+  builtIn: boolean;
+  imageCount: number;
+  thumb: string | null;
+  pageKeys: string[];
+}
+
+const BUILT_IN_INFO: Record<string, { label: string; description: string }> = {
+  home: {
     label: 'Startseite',
     description: 'Slideshow ganz oben auf der Startseite - Titel wird als Bildunterschrift angezeigt.',
   },
-  {
-    id: 'subpage',
+  subpage: {
     label: 'Andere Seiten',
-    description: 'Gemeinsame Slideshow für alle übrigen Seiten - Titel wird hier nirgends angezeigt.',
+    description: 'Gemeinsame Slideshow für alle übrigen Seiten (ohne eigenes Banner) - Titel wird hier nirgends angezeigt.',
   },
-] as const;
+};
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('auth')}` });
 
@@ -64,41 +85,24 @@ const fetchBannersForPosition = async (position: string): Promise<AdBannerRow[]>
   return res.json();
 };
 
+const fetchGroups = async (): Promise<BannerGroupRow[]> => {
+  const res = await fetch('/api/banner-groups', { headers: authHeaders() });
+  if (!res.ok) return [];
+  return res.json();
+};
+
 interface PageOption {
   kind: string;
   title: string;
 }
 
-const authHeadersForPages = () => ({ Authorization: `Bearer ${localStorage.getItem('auth')}` });
-
-// Landing screen at /admin/banners - one card per real banner slot, each
-// showing its own live thumbnail + image count so this reads like a
-// preview instead of a bare menu.
-export const BannerGroupsOverview = () => {
-  const navigate = useNavigate();
+// Shared by the overview (unused now, kept for the manage screen's "Seiten
+// zuweisen" picker) and previously the old page-first flow.
+const usePageOptions = () => {
   const notify = useNotify();
-  const [counts, setCounts] = useState<Record<string, { count: number; thumb: string | null }>>({});
   const [pageOptions, setPageOptions] = useState<PageOption[]>(FIXED_PAGE_KINDS);
-  const [selectedPage, setSelectedPage] = useState<PageOption | null>(null);
-
   useEffect(() => {
-    BANNER_GROUPS.forEach((group) => {
-      fetchBannersForPosition(group.id).then((rows) => {
-        setCounts((prev) => ({
-          ...prev,
-          [group.id]: { count: rows.length, thumb: rows[0]?.imageUrl || null },
-        }));
-      });
-    });
-  }, []);
-
-  // Every real page can have its own dedicated banner slot - the 47
-  // hardcoded pages (kind) plus any admin-created "Seite" (its own slug,
-  // see Pages.tsx/DynamicPage.tsx) - not just the 2 shared slots above.
-  // Falls back to a page not being configurable if this fetch fails; the
-  // 47 fixed ones are always available regardless.
-  useEffect(() => {
-    fetch('/api/pages?_start=0&_end=200', { headers: authHeadersForPages() })
+    fetch('/api/pages?_start=0&_end=200', { headers: authHeaders() })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         const seiten: PageOption[] = Array.isArray(data)
@@ -109,11 +113,112 @@ export const BannerGroupsOverview = () => {
       .catch(() => notify('Seiten konnten nicht geladen werden', { type: 'warning' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  return pageOptions;
+};
 
-  const openSelectedPage = () => {
-    if (!selectedPage) return;
-    navigate(`/admin/banners/manage/${encodeURIComponent(selectedPage.kind)}?title=${encodeURIComponent(selectedPage.title)}`);
+// Landing screen at /admin/banners - the 2 built-in slots, then every
+// admin-created named banner, each as its own card showing a live
+// thumbnail + image count + how many pages currently show it.
+export const BannerGroupsOverview = () => {
+  const navigate = useNavigate();
+  const notify = useNotify();
+  const [groups, setGroups] = useState<BannerGroupRow[] | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const load = () => {
+    fetchGroups().then(setGroups);
   };
+  useEffect(load, []);
+
+  const builtIns = (groups || []).filter((g) => g.builtIn);
+  const custom = (groups || []).filter((g) => !g.builtIn);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/banner-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Fehler beim Erstellen');
+      setCreateOpen(false);
+      setNewName('');
+      navigate(`/admin/banners/manage/${data.id}`);
+    } catch (err: any) {
+      notify(err.message || 'Fehler beim Erstellen', { type: 'error' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, group: BannerGroupRow) => {
+    e.stopPropagation();
+    if (!window.confirm(`"${group.name}" wirklich löschen? Alle seine Bilder werden entfernt und betroffene Seiten zeigen wieder "Andere Seiten".`)) return;
+    const res = await fetch(`/api/banner-groups/${group.id}`, { method: 'DELETE', headers: authHeaders() });
+    if (res.ok) {
+      notify('Banner gelöscht', { type: 'success' });
+      load();
+    } else {
+      notify('Fehler beim Löschen', { type: 'error' });
+    }
+  };
+
+  const renderCard = (group: BannerGroupRow, deletable: boolean) => (
+    <Box
+      key={group.id}
+      onClick={() => navigate(`/admin/banners/manage/${group.id}`)}
+      sx={{
+        width: 320,
+        border: '1px solid #e0e0e0',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        bgcolor: '#fff',
+        position: 'relative',
+        transition: 'box-shadow 0.15s, transform 0.15s',
+        '&:hover': { boxShadow: '0 4px 16px rgba(0,0,0,0.12)', transform: 'translateY(-2px)' },
+      }}
+    >
+      <Box sx={{ height: 160, bgcolor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {group.thumb ? (
+          <Box component="img" src={group.thumb} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <ImageIcon sx={{ fontSize: 40, color: '#bbb' }} />
+        )}
+      </Box>
+      {deletable && (
+        <IconButton
+          size="small"
+          onClick={(e) => handleDelete(e, group)}
+          title="Banner löschen"
+          sx={{
+            position: 'absolute', top: 8, right: 8,
+            bgcolor: 'rgba(0,0,0,0.55)', color: '#fff', '&:hover': { bgcolor: 'rgba(200,0,0,0.8)' },
+          }}
+        >
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      )}
+      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {BUILT_IN_INFO[group.id]?.label || group.name}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#888' }}>
+            {group.imageCount} Bild{group.imageCount === 1 ? '' : 'er'}
+            {!group.builtIn && ` · ${group.pageKeys.length} Seite${group.pageKeys.length === 1 ? '' : 'n'}`}
+          </Typography>
+        </Box>
+        <ChevronRightIcon sx={{ color: '#999', flexShrink: 0 }} />
+      </Box>
+    </Box>
+  );
 
   return (
     <Box sx={{ p: 3 }}>
@@ -122,64 +227,62 @@ export const BannerGroupsOverview = () => {
         Die Startseite und alle übrigen Seiten haben jeweils eine eigene Bilder-Slideshow - hier auswählen, um
         Bilder hinzuzufügen, zu entfernen, auszublenden oder neu anzuordnen.
       </Typography>
-      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 4 }}>
-        {BANNER_GROUPS.map((group) => {
-          const info = counts[group.id];
-          return (
-            <Box
-              key={group.id}
-              onClick={() => navigate(`/admin/banners/manage/${group.id}`)}
-              sx={{
-                width: 320,
-                border: '1px solid #e0e0e0',
-                borderRadius: '10px',
-                overflow: 'hidden',
-                cursor: 'pointer',
-                bgcolor: '#fff',
-                transition: 'box-shadow 0.15s, transform 0.15s',
-                '&:hover': { boxShadow: '0 4px 16px rgba(0,0,0,0.12)', transform: 'translateY(-2px)' },
-              }}
-            >
-              <Box sx={{ height: 160, bgcolor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {info?.thumb ? (
-                  <Box component="img" src={info.thumb} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <ImageIcon sx={{ fontSize: 40, color: '#bbb' }} />
-                )}
-              </Box>
-              <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{group.label}</Typography>
-                  <Typography variant="caption" sx={{ color: '#888' }}>
-                    {info ? `${info.count} Bild${info.count === 1 ? '' : 'er'}` : '...'}
-                  </Typography>
-                </Box>
-                <ChevronRightIcon sx={{ color: '#999' }} />
-              </Box>
-            </Box>
-          );
-        })}
-      </Box>
+      {groups === null ? (
+        <CircularProgress size={24} />
+      ) : (
+        <>
+          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 4 }}>
+            {builtIns.map((g) => renderCard(g, false))}
+          </Box>
 
-      <Typography variant="h6" sx={{ mb: 0.5 }}>Bestimmte Seite auswählen</Typography>
-      <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-        Jede einzelne Seite kann zusätzlich ihr eigenes Banner bekommen - so lange dafür keine eigenen Bilder
-        hinzugefügt wurden, wird weiterhin das Banner von "Andere Seiten" angezeigt.
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Autocomplete
-          options={pageOptions}
-          getOptionLabel={(o) => o.title}
-          isOptionEqualToValue={(a, b) => a.kind === b.kind}
-          value={selectedPage}
-          onChange={(_, value) => setSelectedPage(value)}
-          sx={{ minWidth: 320 }}
-          renderInput={(params) => <MuiTextField {...params} label="Seite" size="small" />}
-        />
-        <Button variant="contained" size="small" disabled={!selectedPage} onClick={openSelectedPage}>
-          Verwalten
-        </Button>
-      </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography variant="h6">Eigene Banner</Typography>
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+              Neues Banner erstellen
+            </Button>
+          </Box>
+          <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
+            Ein eigenes Banner mit eigenen Bildern, das einer oder mehreren Seiten zugewiesen werden kann (unter
+            "Seiten zuweisen" im Banner selbst) - so lange eine Seite keinem eigenen Banner zugewiesen ist, zeigt
+            sie weiterhin "Andere Seiten".
+          </Typography>
+          {custom.length === 0 ? (
+            <Box sx={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+              py: 4, border: '1px dashed #ccc', borderRadius: '8px', color: '#999',
+            }}>
+              <ImageIcon fontSize="large" />
+              <Typography variant="body2">Noch keine eigenen Banner erstellt.</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              {custom.map((g) => renderCard(g, true))}
+            </Box>
+          )}
+        </>
+      )}
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Neues Banner erstellen</DialogTitle>
+        <DialogContent>
+          <MuiTextField
+            autoFocus
+            label="Name des Banners"
+            fullWidth
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+            sx={{ mt: 1 }}
+            placeholder="z. B. Sommer-Aktion"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)}>Abbrechen</Button>
+          <Button variant="contained" disabled={!newName.trim() || creating} onClick={handleCreate}>
+            {creating ? 'Erstellt...' : 'Erstellen'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
@@ -293,6 +396,69 @@ const BannerTile = ({
   );
 };
 
+// "Seiten zuweisen" - only shown for a custom (non-built-in) banner: which
+// pages currently show THIS banner. Claiming a page here steals it away
+// from whatever banner (if any) had it before, server-side
+// (bannerGroups.routes.ts PUT /:id/pages) - a page can only show one
+// banner at a time.
+const PageAssignment = ({ groupId }: { groupId: string }) => {
+  const notify = useNotify();
+  const pageOptions = usePageOptions();
+  const [selected, setSelected] = useState<PageOption[] | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/banner-groups/${groupId}/pages`, { headers: authHeaders() })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((keys: string[]) => setSelected(keys.map((k) => pageOptions.find((p) => p.kind === k) || { kind: k, title: k })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, pageOptions.length]);
+
+  const handleSave = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/banner-groups/${groupId}/pages`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ pageKeys: selected.map((p) => p.kind) }),
+      });
+      if (!res.ok) throw new Error();
+      notify('Seiten gespeichert', { type: 'success' });
+    } catch {
+      notify('Fehler beim Speichern', { type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mb: 3, p: 2, border: '1px solid #e0e0e0', borderRadius: '8px', bgcolor: '#fafafa' }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>Seiten zuweisen</Typography>
+      <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
+        Auf welchen Seiten dieses Banner angezeigt wird - mehrere Seiten gleichzeitig möglich. Eine Seite zeigt
+        immer nur ein Banner; wird sie hier hinzugefügt, verliert sie automatisch ihr vorheriges eigenes Banner.
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Autocomplete
+          multiple
+          options={pageOptions}
+          getOptionLabel={(o) => o.title}
+          isOptionEqualToValue={(a, b) => a.kind === b.kind}
+          value={selected || []}
+          onChange={(_, value) => setSelected(value)}
+          loading={selected === null}
+          sx={{ minWidth: 360, flex: 1 }}
+          renderInput={(params) => <MuiTextField {...params} label="Seiten" size="small" />}
+        />
+        <Button variant="contained" size="small" disabled={saving || selected === null} onClick={handleSave}>
+          {saving ? 'Speichert...' : 'Speichern'}
+        </Button>
+      </Box>
+    </Box>
+  );
+};
+
 // The manager itself, at /admin/banners/manage/:position.
 export const BannerGroupManager = () => {
   const { position } = useParams<{ position: string }>();
@@ -304,14 +470,15 @@ export const BannerGroupManager = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [group, setGroup] = useState<BannerGroupRow | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
 
-  const group = BANNER_GROUPS.find((g) => g.id === position);
   const isHomeGroup = position === 'home';
-  // For a "bestimmte Seite" (not one of the 2 shared groups above): the
-  // overview's picker passes the page's real title via ?title=, since
-  // `position` itself is just its raw slug/kind - a much friendlier label
-  // than showing the admin their own URL slug.
-  const pageTitle = searchParams.get('title');
+  const isBuiltIn = position === 'home' || position === 'subpage';
+  // Query param from the overview's old nav, kept only as an instant label
+  // before the real fetch below resolves - avoids a blank-title flash.
+  const queryTitle = searchParams.get('title');
 
   const load = () => {
     if (!position) return;
@@ -323,6 +490,14 @@ export const BannerGroupManager = () => {
   };
 
   useEffect(load, [position]);
+
+  useEffect(() => {
+    if (!position) return;
+    fetchGroups().then((groups) => {
+      const found = groups.find((g) => g.id === position);
+      if (found) setGroup(found);
+    });
+  }, [position]);
 
   const uploadOne = async (file: File): Promise<string | null> => {
     const formData = new FormData();
@@ -418,17 +593,85 @@ export const BannerGroupManager = () => {
     persistOrder(next);
   };
 
+  const startRename = () => {
+    setNameDraft(group?.name || '');
+    setRenaming(true);
+  };
+
+  const saveRename = async () => {
+    const name = nameDraft.trim();
+    if (!name || !position) { setRenaming(false); return; }
+    const res = await fetch(`/api/banner-groups/${position}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      setGroup((g) => (g ? { ...g, name } : g));
+      notify('Name gespeichert', { type: 'success' });
+    } else {
+      notify('Fehler beim Speichern', { type: 'error' });
+    }
+    setRenaming(false);
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!position || isBuiltIn) return;
+    if (!window.confirm('Dieses Banner wirklich löschen? Alle seine Bilder werden entfernt und betroffene Seiten zeigen wieder "Andere Seiten".')) return;
+    const res = await fetch(`/api/banner-groups/${position}`, { method: 'DELETE', headers: authHeaders() });
+    if (res.ok) {
+      notify('Banner gelöscht', { type: 'success' });
+      navigate('/admin/banners');
+    } else {
+      notify('Fehler beim Löschen', { type: 'error' });
+    }
+  };
+
+  const title = BUILT_IN_INFO[position || '']?.label || group?.name || queryTitle || position;
+  const description = BUILT_IN_INFO[position || '']?.description
+    || 'Eigenes Banner - weist du unten einer oder mehreren Seiten zu. Eine Seite ohne eigenes Banner zeigt weiterhin "Andere Seiten".';
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
         <IconButton onClick={() => navigate('/admin/banners')} title="Zurück zur Übersicht">
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">{group?.label || pageTitle || position}</Typography>
+        {renaming ? (
+          <>
+            <MuiTextField
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setRenaming(false); }}
+              size="small"
+              autoFocus
+            />
+            <Button size="small" variant="contained" onClick={saveRename}>Speichern</Button>
+            <Button size="small" onClick={() => setRenaming(false)}>Abbrechen</Button>
+          </>
+        ) : (
+          <>
+            <Typography variant="h5">{title}</Typography>
+            {!isBuiltIn && (
+              <IconButton size="small" onClick={startRename} title="Umbenennen">
+                <EditIcon fontSize="small" />
+              </IconButton>
+            )}
+          </>
+        )}
+        {!isBuiltIn && (
+          <Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={handleDeleteGroup}>
+              Banner löschen
+            </Button>
+          </Box>
+        )}
       </Box>
       <Typography variant="body2" sx={{ color: '#666', mb: 3, ml: 6 }}>
-        {group?.description || 'Eigenes Banner nur für diese Seite - solange hier keine Bilder hinzugefügt werden, zeigt diese Seite weiterhin das Banner von "Andere Seiten".'}
+        {description}
       </Typography>
+
+      {!isBuiltIn && position && <PageAssignment groupId={position} />}
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
         <Button

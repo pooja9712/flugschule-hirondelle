@@ -4,18 +4,29 @@ import { authenticateJWT, authorizeAdmin } from '../middlewares/auth.middleware'
 
 const router = Router();
 
-// GET active banners for public (by position) - the live site only has two
-// real slots ("home" - the home page's own slideshow, "subpage" - every
-// other page's shared slideshow, see frontend/src/components/common/
-// Banner.tsx), so ?position= filters to just one of them; omitting it
-// keeps the old unfiltered behavior for any other caller.
+// GET active banners for public. Two ways to ask:
+// - ?position= : the raw AdBanner.position/slot key directly (legacy;
+//   still used for position="home"/"subpage" since those never need
+//   resolving).
+// - ?pageKey= : a page's own key ("home", "subpage", a fixed page's
+//   `kind`, or a Seiten page's slug) - resolved through BannerPageLink
+//   first (Admin > Werbebanner > a banner's "Seiten zuweisen"), falling
+//   back to using pageKey itself as the position when no link exists -
+//   exactly today's implicit 1:1 behavior for a page with no banner
+//   explicitly assigned to it.
+// Omitting both keeps the old unfiltered behavior for any other caller.
 router.get('/public', async (req, res) => {
   try {
-    const { position } = req.query;
+    let { position, pageKey } = req.query;
+    if (pageKey && !position) {
+      const link = await prisma.bannerPageLink.findUnique({ where: { pageKey: pageKey as string } });
+      position = link ? link.bannerGroupId : (pageKey as string);
+    }
     const banners = await prisma.adBanner.findMany({
       where: { published: true, ...(position ? { position: position as string } : {}) },
       orderBy: { order: 'asc' }
     });
+    res.set('Cache-Control', 'no-store');
     res.json(banners);
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });

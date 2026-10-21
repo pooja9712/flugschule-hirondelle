@@ -381,6 +381,36 @@ model AdBanner {
   updatedAt DateTime @updatedAt
 }
 
+// A named, independently-created banner (Admin > Werbebanner > "+ Neues
+// Banner erstellen") - its own slide images still live as AdBanner rows
+// keyed by `position = this BannerGroup's id` (same storage as the
+// original 2 built-in slots below, just no longer tied 1:1 to a page). The
+// 2 original slots ("home" - Startseite, "subpage" - Andere Seiten) are
+// BannerGroup rows too, seeded with those exact fixed ids, so every banner
+// (built-in or admin-created) is handled by one uniform code path.
+model BannerGroup {
+  id        String           @id @default(uuid())
+  name      String
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  pageLinks BannerPageLink[]
+}
+
+// Which banner a given page currently shows - a page can show only one
+// banner at a time (hence `pageKey` unique), but the same BannerGroup can
+// be linked from many pages at once (assign one banner to several pages).
+// `pageKey` is whatever Banner.tsx is already called with: "home",
+// "subpage", a fixed page's `kind`, or a Seiten page's slug. No row here
+// for a given pageKey = that page falls back to "Andere Seiten", same as
+// before this feature existed.
+model BannerPageLink {
+  id            String      @id @default(uuid())
+  pageKey       String      @unique
+  bannerGroupId String
+  bannerGroup   BannerGroup @relation(fields: [bannerGroupId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+}
+
 model BookingFormConfig {
   // No @default("default") here: that's a literal static default, not a
   // generator, so every row created without an explicit id would collide

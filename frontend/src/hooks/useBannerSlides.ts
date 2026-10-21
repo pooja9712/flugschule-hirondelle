@@ -20,7 +20,11 @@ async function fetchValidatedSlides(
   withCaptions: boolean,
   cancelledRef: { current: boolean }
 ): Promise<BannerSlide[] | null> {
-  const res = await fetch(`/api/banners/public?position=${position}`);
+  // `pageKey` (not `position`) - resolved server-side through
+  // BannerPageLink first (Admin > Werbebanner > a banner's "Seiten
+  // zuweisen"), falling back to using this key as the raw position when no
+  // banner is explicitly assigned to it (today's behavior, unchanged).
+  const res = await fetch(`/api/banners/public?pageKey=${encodeURIComponent(position)}`);
   if (!res.ok) return null;
   const rows: AdBannerResponse[] = await res.json();
   if (cancelledRef.current || !Array.isArray(rows) || rows.length === 0) return null;
