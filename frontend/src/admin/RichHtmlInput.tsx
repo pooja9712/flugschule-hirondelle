@@ -181,7 +181,18 @@ export const RichHtmlInput = ({
           helperText={helperText}
         />
       ) : (
-        <Box sx={{ border: '1px solid #c4c4c4', borderRadius: 1, overflow: 'hidden', '& .tox-tinymce': { border: 'none', borderRadius: 0 } }}>
+        <Box sx={{
+          border: '1px solid #c4c4c4', borderRadius: 1, overflow: 'hidden',
+          '& .tox-tinymce': { border: 'none', borderRadius: 0 },
+          // The content_style override a few lines below only reaches the
+          // iframe's OWN document - it never touched why wide content
+          // stayed invisible with no scrollbar at all: TinyMCE's own skin
+          // CSS sets overflow:hidden directly on the <iframe> element
+          // itself, in THIS (parent) document, which content_style can't
+          // reach. Overriding it here, on the actual tag the browser's
+          // native scrollbar logic looks at.
+          '& .tox-edit-area, & .tox-edit-area__iframe': { overflow: 'auto !important' },
+        }}>
           <Editor
             // Content-only <-> design view needs a fresh editor (canvas CSS is set at init).
             key={plain ? 'plain' : 'design'}
