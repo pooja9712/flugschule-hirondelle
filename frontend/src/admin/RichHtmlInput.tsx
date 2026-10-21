@@ -314,6 +314,17 @@ export const RichHtmlInput = ({
                     const drawer = editor.getContainer()?.querySelector('.tox-toolbar__overflow');
                     if (!drawer || drawer.classList.contains('tox-toolbar__overflow--closed')) editor.execCommand('ToggleToolbarDrawer');
                   }, 0);
+                  // TinyMCE sets the actual scrolling="no" HTML ATTRIBUTE on
+                  // the iframe it creates - CSS overflow (even !important)
+                  // can't override that attribute, only JS removing/
+                  // resetting it can. This is the real reason wide content
+                  // (a table wider than the canvas) stayed invisible with no
+                  // scrollbar at all, even after the CSS-only attempts.
+                  const iframe = editor.iframeElement as HTMLIFrameElement | undefined;
+                  if (iframe) {
+                    iframe.removeAttribute('scrolling');
+                    iframe.style.overflow = 'auto';
+                  }
                 });
                 if (plain) registerEmptyDecorationMarker(editor);
 
