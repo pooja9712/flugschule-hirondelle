@@ -547,7 +547,7 @@ const StatusChip = ({ source, label: _label }: { source?: string, label?: string
 };
 
 export const BookingList = () => (
-    <List filters={<BookingFilter />} sort={{ field: 'createdAt', order: 'DESC' }} actions={false} filterDefaultValues={{ status: 'activeandpending' }}>
+    <List filters={<BookingFilter />} sort={{ field: 'createdAt', order: 'DESC' }} actions={false} filterDefaultValues={{ status: 'all' }}>
         {/* We place the actions here inside the List context rather than in the
             actions prop so they can wrap freely. The grid wrapper with minmax(0, 1fr)
             prevents the wide Datagrid from forcing the parent Card to expand horizontally,
