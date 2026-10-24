@@ -241,11 +241,6 @@ export const BannerGroupsOverview = () => {
               Neues Banner erstellen
             </Button>
           </Box>
-          <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-            Ein eigenes Banner mit eigenen Bildern, das einer oder mehreren Seiten zugewiesen werden kann (unter
-            "Seiten zuweisen" im Banner selbst) - so lange eine Seite keinem eigenen Banner zugewiesen ist, zeigt
-            sie weiterhin "Andere Seiten".
-          </Typography>
           {custom.length === 0 ? (
             <Box sx={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
