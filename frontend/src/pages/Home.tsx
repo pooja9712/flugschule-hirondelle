@@ -366,71 +366,68 @@ export const Home = ({ contentId }: { contentId?: string } = {}) => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
 
-            {/* Box 1: Fliegen Lernen - old site's box links to /ausbildung/schnupperkurs */}
-            <Link to={promoCards[0].link || DEFAULT_PROMO_CARDS[0].link} className="relative h-[400px] group overflow-hidden bg-white shadow-xl cursor-pointer block">
-              <div
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                style={{ backgroundImage: `url("${getImage(7, promoCards[0].image || DEFAULT_PROMO_CARDS[0].image)}")` }}
-              ></div>
-              <div className="absolute inset-0 bg-gradient-to-t from-luxury-dark/90 via-luxury-dark/40 to-black/20"></div>
-              <div className="absolute inset-4 border border-white/20 pointer-events-none z-10 transition-colors group-hover:border-luxury-gold/50"></div>
-
-              <div className="absolute top-8 left-8 right-8 z-20 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white">
+            {/* Box 1: Fliegen Lernen - old site's box links to /ausbildung/schnupperkurs.
+                Sky-blue title bar + image + white text area matches old's real
+                card layout (fs-hirondelle.de home boxes), instead of overlaying
+                everything on the photo. */}
+            <Link to={promoCards[0].link || DEFAULT_PROMO_CARDS[0].link} className="h-[400px] flex flex-col group overflow-hidden bg-white shadow-xl cursor-pointer">
+              <div className="flex items-center gap-3 px-6 py-4 bg-hirondelle-blue flex-shrink-0">
+                <div className="w-10 h-10 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white flex-shrink-0">
                   <img src="/google.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <h3 className="font-luxury text-white text-2xl uppercase tracking-widest">{promoCards[0].title}</h3>
               </div>
-
-              <div className="absolute bottom-8 left-8 right-8 z-20">
-                <p className="text-white font-bold text-sm mb-2">{promoCards[0].boldLine}</p>
-                <SafeHtml html={promoCards[0].description} className="text-white/80 text-sm font-light leading-relaxed" />
+              <div className="relative flex-1 overflow-hidden">
+                <div
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                  style={{ backgroundImage: `url("${getImage(7, promoCards[0].image || DEFAULT_PROMO_CARDS[0].image)}")` }}
+                ></div>
+              </div>
+              <div className="px-6 py-4 flex-shrink-0">
+                <p className="text-luxury-dark font-bold text-sm mb-2">{promoCards[0].boldLine}</p>
+                <SafeHtml html={promoCards[0].description} className="text-gray-500 text-sm font-light leading-relaxed" />
               </div>
             </Link>
 
             {/* Box 2: Shop Geöffnet - old site's box links to /infos */}
-            <Link to={promoCards[1].link || DEFAULT_PROMO_CARDS[1].link} className="relative h-[400px] group overflow-hidden bg-white shadow-xl cursor-pointer block">
-              <div
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                style={{ backgroundImage: `url("${getImage(8, promoCards[1].image || DEFAULT_PROMO_CARDS[1].image)}")` }}
-              ></div>
-              <div className="absolute inset-0 bg-gradient-to-t from-luxury-dark/90 via-luxury-dark/40 to-black/20"></div>
-              <div className="absolute inset-4 border border-white/20 pointer-events-none z-10 transition-colors group-hover:border-luxury-gold/50"></div>
-
-              <div className="absolute top-8 left-8 right-8 z-20 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white">
+            <Link to={promoCards[1].link || DEFAULT_PROMO_CARDS[1].link} className="h-[400px] flex flex-col group overflow-hidden bg-white shadow-xl cursor-pointer">
+              <div className="flex items-center gap-3 px-6 py-4 bg-hirondelle-blue flex-shrink-0">
+                <div className="w-10 h-10 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white flex-shrink-0">
                   <img src="/google.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <h3 className="font-luxury text-white text-2xl uppercase tracking-widest">{promoCards[1].title}</h3>
               </div>
-
-              <div className="absolute bottom-8 left-8 right-8 z-20">
-                <p className="text-white font-bold text-sm mb-2">{promoCards[1].boldLine}</p>
-                <SafeHtml html={promoCards[1].description} className="text-white/80 text-sm font-light leading-relaxed" />
+              <div className="relative flex-1 overflow-hidden">
+                <div
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                  style={{ backgroundImage: `url("${getImage(8, promoCards[1].image || DEFAULT_PROMO_CARDS[1].image)}")` }}
+                ></div>
+              </div>
+              <div className="px-6 py-4 flex-shrink-0">
+                <p className="text-luxury-dark font-bold text-sm mb-2">{promoCards[1].boldLine}</p>
+                <SafeHtml html={promoCards[1].description} className="text-gray-500 text-sm font-light leading-relaxed" />
               </div>
             </Link>
 
             {/* Box 3: On Tour - links to the real event list pre-filtered
                 by search term, matching old's real eventlist behavior (see
                 DEFAULT_PROMO_CARDS' own comment above). */}
-            <Link to={promoCards[2].link || DEFAULT_PROMO_CARDS[2].link} className="relative h-[400px] group overflow-hidden bg-white shadow-xl cursor-pointer block">
-              <div
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                style={{ backgroundImage: `url("${getImage(9, promoCards[2].image || DEFAULT_PROMO_CARDS[2].image)}")` }}
-              ></div>
-              <div className="absolute inset-0 bg-gradient-to-t from-luxury-dark/90 via-luxury-dark/40 to-black/20"></div>
-              <div className="absolute inset-4 border border-white/20 pointer-events-none z-10 transition-colors group-hover:border-luxury-gold/50"></div>
-
-              <div className="absolute top-8 left-8 right-8 z-20 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white">
+            <Link to={promoCards[2].link || DEFAULT_PROMO_CARDS[2].link} className="h-[400px] flex flex-col group overflow-hidden bg-white shadow-xl cursor-pointer">
+              <div className="flex items-center gap-3 px-6 py-4 bg-hirondelle-blue flex-shrink-0">
+                <div className="w-10 h-10 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white flex-shrink-0">
                   <img src="/google.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <h3 className="font-luxury text-white text-2xl uppercase tracking-widest">{promoCards[2].title}</h3>
               </div>
-
-              <div className="absolute bottom-8 left-8 right-8 z-20">
-                <p className="text-white font-bold text-sm mb-2">{promoCards[2].boldLine}</p>
-                <SafeHtml html={promoCards[2].description} className="text-white/80 text-sm font-light leading-relaxed" />
+              <div className="relative flex-1 overflow-hidden">
+                <div
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                  style={{ backgroundImage: `url("${getImage(9, promoCards[2].image || DEFAULT_PROMO_CARDS[2].image)}")` }}
+                ></div>
+              </div>
+              <div className="px-6 py-4 flex-shrink-0">
+                <p className="text-luxury-dark font-bold text-sm mb-2">{promoCards[2].boldLine}</p>
+                <SafeHtml html={promoCards[2].description} className="text-gray-500 text-sm font-light leading-relaxed" />
               </div>
             </Link>
 
